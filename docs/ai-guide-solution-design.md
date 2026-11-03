@@ -21,85 +21,64 @@
 ### 1.3 目标架构流程图
 
 ```mermaid
-%%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'background': '#14161a',
-    'primaryColor': '#1f2430',
-    'primaryBorderColor': '#3b4354',
-    'primaryTextColor': '#eaeef5',
-    'lineColor': '#8a93a3',
-    'secondaryColor': '#232a38',
-    'tertiaryColor': '#1a1e26',
-    'mainBkg': '#1f2430',
-    'nodeBorder': '#3b4354',
-    'edgeLabelBackground': '#14161a',
-    'clusterBkg': '#1b1f28',
-    'clusterBorder': '#3b4354',
-    'fontFamily': 'PingFang SC, Microsoft YaHei, sans-serif'
-  },
-  'flowchart': { 'useMaxWidth': false, 'nodeSpacing': 50, 'rankSpacing': 55, 'curve': 'basis', 'padding': 16 }
-}}%%
 graph TD
-    start(("用户发送消息")):::userAction
-    analyze{"需求完备性分析<br/>意图·目的地·天数·预算·出行时间"}:::sysDecision
-    clarify["需求澄清追问<br/>前期：多轮对话引导补全"]:::sysDecision
-    done{"本轮补充后<br/>需求是否完备?"}:::sysDecision
-    route{"复杂度路由<br/>qwen3.8-flash"}:::sysDecision
-    quick["快速回答<br/>ChatClient 直连 · deepseek-chat"]:::agentNode
-    rag["RAG 知识库检索增强<br/>全模式公共基础能力"]:::toolNode
-    answer(("回答节点<br/>流式回复用户")):::userAction
-    hitl["Human-in-the-loop 确认<br/>后期演进：关键节点人工拦截"]:::sysDecision
-    fe["前端可视化<br/>思考链 · 工具调用 · 子任务状态逐步展示"]:::userAction
+    %% 样式定义
+    classDef startEnd fill:#2a9d8f,color:#fff,stroke:#264653,stroke-width:2px;
+    classDef process fill:#457b9d,color:#fff,stroke:#1d3557,stroke-width:2px;
+    classDef decision fill:#6a4c93,color:#fff,stroke:#432818,stroke-width:2px;
+    classDef highlight fill:#e76f51,color:#fff,stroke:#333,stroke-width:2px;
+    classDef expert fill:#3a5a40,color:#fff,stroke:#283618,stroke-width:2px;
+    classDef enhancement fill:#f4a261,color:#000,stroke:#e76f51,stroke-width:2px;
 
-    subgraph AGENT ["ReAct Agent · Supervisor 多智能体"]
-        direction LR
-        sup{"主 Agent Supervisor<br/>ReAct 模式：任务拆解派发 · 验收 · 汇总"}:::sysDecision
-        w["天气专家 Agent<br/>高德 MCP 天气工具"]:::toolNode
-        m["地图专家 Agent<br/>高德 MCP 地理编码 · 路线规划"]:::toolNode
-        s["网页搜索专家 Agent<br/>Tavily 搜索 → Firecrawl 全文抓取"]:::toolNode
-        d["文档生成专家 Agent<br/>行程攻略 · 结构化文档"]:::toolNode
-        sup -->|"按需派发"| w
-        sup --> m
-        sup --> s
-        sup --> d
-        w -.->|"结果回传"| sup
-        m -.-> sup
-        s -.-> sup
-        d -.-> sup
+    %% 1. 绝对顶端：入口节点
+    Start([用户发送消息]):::startEnd
+    IntentRouter{极轻量意图拦截<br>闲聊 vs 任务}:::decision
+    Start --> IntentRouter
+
+    %% ================= 2. 左侧旁路：闲聊分支 =================
+    IntentRouter -- 闲聊/身份 --> DirectReply[闲聊直接回复<br>基于 System Prompt]:::process
+    DirectReply --> EndCasual([流式回复用户]):::startEnd
+
+    %% ================= 3. 垂直主干：需求分析 =================
+    IntentRouter -- 任务/提问 --> ReqAnalysis{需求完备性分析<br>意图/目的地/天数/预算}:::decision
+
+    %% 需求澄清 (作为左侧旁挂，避免拉扯主干垂直度)
+    ReqAnalysis -- 不完备 --> Clarify["需求澄清节点<br>前期 MVP: 多轮对话引导<br>最终版: HITL 人工介入"]:::enhancement
+    Clarify -- 补充完毕 --> ReqAnalysis
+
+    ReqAnalysis -- 完备 --> Router{qwen3.8-flash 复杂度路由}:::decision
+
+    %% ================= 4. 左下方：复杂规划链路 =================
+    Router -- 复杂多步规划 --> Supervisor{主 Agent Supervisor<br>ReAct 模式·拆解·验收}:::decision
+
+    subgraph ComplexFlow ["复杂行程规划链路 (多 Agent 协同)"]
+        direction TB
+        Supervisor -- 按需派发 --> WeatherAgent[天气专家 Agent]:::expert
+        Supervisor -- 按需派发 --> MapAgent[地图专家 Agent]:::expert
+        Supervisor -- 按需派发 --> SearchAgent[网页搜索专家 Agent]:::expert
+        Supervisor == 强制派发 ==> DocAgent[文档生成 Agent]:::expert
+
+        WeatherAgent -. 结果回传 .-> Supervisor
+        MapAgent -. 结果回传 .-> Supervisor
+        SearchAgent -. 结果回传 .-> Supervisor
+        DocAgent -. 交付最终文档 .-> Supervisor
+        
+        Supervisor --> VisualComplex[前端流式可视化<br>思考链/工具状态]:::process
+        VisualComplex --> EndComplex([流式回复用户]):::startEnd
     end
 
-    start ==> analyze
-    analyze -->|"不完备"| clarify
-    clarify --> done
-    analyze -->|"完备"| route
-    done -->|"继续补充"| analyze
-    done -.->|"引导确认<br/>（后期 HITL）"| hitl
-    hitl -.-> analyze
-    done -->|"放弃提问"| answer
-    route ==>|"简单需求"| quick
-    route ==>|"复杂需求"| sup
-    quick --> rag
-    rag --> answer
-    sup -->|"汇总验收"| answer
+    %% ================= 5. 右下方：简单快问快答链路 =================
+    Router -- 简单/单一事实 --> FastAgent[大模型综合处理<br>deepseek-chat]:::highlight
 
-    sup -.-> fe
-    w -.-> fe
-    m -.-> fe
-    s -.-> fe
-    d -.-> fe
-    quick -.-> fe
-
-    classDef userAction fill:#0b4f4f,stroke:#2dd4bf,stroke-width:2px,color:#e0fff9
-    classDef sysDecision fill:#5c1a6e,stroke:#e879f9,stroke-width:2px,color:#fbe6ff
-    classDef agentNode fill:#123f7c,stroke:#60a5fa,stroke-width:2px,color:#e3f1ff
-    classDef toolNode fill:#274a16,stroke:#4ade80,stroke-width:1.5px,color:#e6f7e1
-    style AGENT fill:#181d26,stroke:#60a5fa,stroke-width:2px,color:#e3f1ff
-    style route stroke:#fbbf24,stroke-width:3px
-    style sup stroke:#fbbf24,stroke-width:3px
-    style answer stroke:#2dd4bf,stroke-width:3px
-    linkStyle 12,13,15,16 stroke:#d9e0ea,stroke-width:3px
-    linkStyle 11,14 stroke:#e879f9,stroke-width:1.5px
+    subgraph SimpleFlow ["简单快问快答链路 (All-in-One 极简版)"]
+        direction TB
+        FastAgent -. 按需调用 .-> ToolWeather[实时天气 API]:::process
+        FastAgent -. 按需调用 .-> ToolWeb[联网搜索 API]:::process
+        FastAgent -. 按需检索 .-> KnowledgeRAG[RAG 旅游知识库]:::process
+        
+        FastAgent --> VisualSimple[前端流式可视化<br>简单链路状态]:::process
+        VisualSimple --> EndSimple([流式回复用户]):::startEnd
+    end
 ```
 
 要点说明：
