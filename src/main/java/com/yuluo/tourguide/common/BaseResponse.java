@@ -1,7 +1,7 @@
-package com.yuluo.eyaicodemother.common;
+package com.yuluo.tourguide.common;
 
 
-import com.yuluo.eyaicodemother.exception.ErrorCode;
+import com.yuluo.tourguide.exception.ErrorCode;
 import lombok.Data;
 
 import java.io.Serializable;

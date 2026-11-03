@@ -1,4 +1,4 @@
-package com.yuluo.eyaicodemother.exception;
+package com.yuluo.tourguide.exception;
 
 import lombok.Getter;
 

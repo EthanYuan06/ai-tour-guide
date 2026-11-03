@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.yuluo</groupId>
-    <artifactId>ai-digital-shopping-agent</artifactId>
+    <artifactId>ai-tour-guide</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ai-digital-shopping-agent</name>
-    <description>ai-digital-shopping-agent</description>
+    <name>ai-tour-guide</name>
+    <description>ai-tour-guide</description>
     <url/>
     <licenses>
         <license/>

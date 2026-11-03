@@ -1,4 +1,4 @@
-package com.yuluo.eyaicodemother.exception;
+package com.yuluo.tourguide.exception;
 
 /**
  * 抛异常工具类

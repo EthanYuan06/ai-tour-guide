@@ -1,6 +1,6 @@
 spring:
   application:
-    name: ai-digital-shopping-agent
+    name: ai-tour-guide
 server:
   port: 8123
   servlet:
@@ -16,7 +16,7 @@ springdoc:
   group-configs:
     - group: 'default'
       paths-to-match: '/**'
-      packages-to-scan: com.yuluo.shoppingagent.controller
+      packages-to-scan: com.yuluo.tourguide.controller
 # knife4j
 knife4j:
   enable: true

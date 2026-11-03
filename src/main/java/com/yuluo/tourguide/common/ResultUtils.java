@@ -1,7 +1,7 @@
-package com.yuluo.eyaicodemother.common;
+package com.yuluo.tourguide.common;
 
 
-import com.yuluo.eyaicodemother.exception.ErrorCode;
+import com.yuluo.tourguide.exception.ErrorCode;
 
 /**
  * 快速构造响应结果的工具类

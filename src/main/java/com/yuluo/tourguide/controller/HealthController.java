@@ -1,4 +1,4 @@
-package com.yuluo.shoppingagent.controller;
+package com.yuluo.tourguide.controller;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;

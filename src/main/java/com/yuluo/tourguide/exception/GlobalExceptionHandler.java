@@ -1,8 +1,8 @@
-package com.yuluo.eyaicodemother.exception;
+package com.yuluo.tourguide.exception;
 
 import cn.hutool.json.JSONUtil;
-import com.yuluo.eyaicodemother.common.BaseResponse;
-import com.yuluo.eyaicodemother.common.ResultUtils;
+import com.yuluo.tourguide.common.BaseResponse;
+import com.yuluo.tourguide.common.ResultUtils;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

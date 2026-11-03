@@ -1,4 +1,4 @@
-package com.yuluo.eyaicodemother.common;
+package com.yuluo.tourguide.common;
 
 import lombok.Data;
 
