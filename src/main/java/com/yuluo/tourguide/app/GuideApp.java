@@ -1,4 +1,4 @@
-package com.yuluo.tourguide.service;
+package com.yuluo.tourguide.app;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
@@ -6,6 +6,8 @@ import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
 import com.yuluo.tourguide.model.dto.ChatResponse;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -16,21 +18,19 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 /**
- * 智能导游对话服务
+ * 智能导游对话应用层：驱动已装配的 ChatClient 完成 AI 对话
  */
+@Slf4j
 @Service
-public class TourGuideChatService {
+public class GuideApp {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    private final ChatClient chatClient;
+    @Resource
+    private ChatClient tourGuideChatClient;
 
-    private final PromptTemplate systemPromptTemplate;
-
-    public TourGuideChatService(ChatClient tourGuideChatClient, PromptTemplate tourGuideSystemPrompt) {
-        this.chatClient = tourGuideChatClient;
-        this.systemPromptTemplate = tourGuideSystemPrompt;
-    }
+    @Resource
+    private PromptTemplate tourGuideSystemPrompt;
 
     /**
      * 单轮对话，基于 conversationId 维护多轮上下文
@@ -43,14 +43,18 @@ public class TourGuideChatService {
         String message = chatRequest.getMessage();
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "问题不能为空");
 
-        String conversationId = StrUtil.isBlank(chatRequest.getConversationId())
+        boolean newConversation = StrUtil.isBlank(chatRequest.getConversationId());
+        String conversationId = newConversation
                 ? IdUtil.simpleUUID()
                 : chatRequest.getConversationId().trim();
+        if (newConversation) {
+            log.info("[chat] 生成新会话 id={}", conversationId);
+        }
 
-        String systemPrompt = systemPromptTemplate.render(
+        String systemPrompt = tourGuideSystemPrompt.render(
                 Map.of("currentDate", LocalDate.now().format(DATE_FORMATTER)));
 
-        String reply = chatClient.prompt()
+        String reply = tourGuideChatClient.prompt()
                 .system(systemPrompt)
                 .user(message.trim())
                 .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))

@@ -5,6 +5,9 @@ spring:
     # 把项目根目录的 .env 当作 properties 文件导入（KEY=VALUE、# 注释），文件不存在时不报错
     import: optional:file:./.env[.properties]
   ai:
+    retry:
+      # 默认 max-attempts=10 且指数退避，同步接口异常时会长时间挂起，收敛为 3 次
+      max-attempts: 3
     model:
       # 显式开启 OpenAI 兼容协议下的 Chat 自动装配
       chat: openai

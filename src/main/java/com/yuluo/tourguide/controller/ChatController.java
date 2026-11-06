@@ -1,10 +1,10 @@
 package com.yuluo.tourguide.controller;
 
+import com.yuluo.tourguide.app.GuideApp;
 import com.yuluo.tourguide.common.BaseResponse;
 import com.yuluo.tourguide.common.ResultUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
 import com.yuluo.tourguide.model.dto.ChatResponse;
-import com.yuluo.tourguide.service.TourGuideChatService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ChatController {
 
-    private final TourGuideChatService tourGuideChatService;
+    private final GuideApp guideApp;
 
     /**
      * 向 AI 导游提问，同步返回完整回复
@@ -33,6 +33,6 @@ public class ChatController {
     @Operation(summary = "向 AI 导游提问（同步返回）")
     @PostMapping
     public BaseResponse<ChatResponse> chat(@RequestBody ChatRequest chatRequest) {
-        return ResultUtils.success(tourGuideChatService.chat(chatRequest));
+        return ResultUtils.success(guideApp.chat(chatRequest));
     }
 }
