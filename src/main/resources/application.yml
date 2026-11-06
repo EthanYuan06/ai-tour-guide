@@ -1,6 +1,26 @@
 spring:
   application:
     name: ai-tour-guide
+  config:
+    # 把项目根目录的 .env 当作 properties 文件导入（KEY=VALUE、# 注释），文件不存在时不报错
+    import: optional:file:./.env[.properties]
+  ai:
+    model:
+      # 显式开启 OpenAI 兼容协议下的 Chat 自动装配
+      chat: openai
+    openai:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: ${DASHSCOPE_API_KEY}
+      chat:
+        options:
+          model: ${AI_TOUR_GUIDE_CHAT_MODEL:deepseek-v4.1-flash}
+          # 官方建议 0.7~0.8，作为语气锚点
+          temperature: 0.75
+          # 长行程容易被截断，放大输出上限
+          max-tokens: 6000
+          # 百炼 DeepSeek 系列默认开思考模式，同步接口需关闭以控制延迟与成本
+          extra-body:
+            "[enable_thinking]": false
 server:
   port: 8123
   servlet:
