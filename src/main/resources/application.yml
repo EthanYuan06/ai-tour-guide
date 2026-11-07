@@ -21,10 +21,12 @@ spring:
       chat:
         options:
           model: ${AI_TOUR_GUIDE_CHAT_MODEL:deepseek-v4.1-flash}
-          # 官方建议 0.7~0.8，作为语气锚点
+          # 调试后得出的回复语气最佳温度
           temperature: 0.75
           # 长行程容易被截断，放大输出上限
           max-tokens: 6000
+          # 开启流式输出回传 usage，方便统计 token 消耗
+          stream-usage: true
           # 百炼 DeepSeek 系列默认开思考模式，同步接口需关闭以控制延迟与成本
           extra-body:
             "[enable_thinking]": false

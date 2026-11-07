@@ -7,7 +7,7 @@ import com.yuluo.tourguide.model.dto.ChatRequest;
 import com.yuluo.tourguide.model.dto.ChatResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,10 +24,10 @@ import reactor.core.publisher.Flux;
 @Tag(name = "AI 导游对话")
 @RestController
 @RequestMapping("/chat")
-@RequiredArgsConstructor
 public class ChatController {
 
-    private final GuideApp guideApp;
+    @Resource
+    private GuideApp guideApp;
 
     /**
      * 向 AI 导游提问，同步返回完整回复
