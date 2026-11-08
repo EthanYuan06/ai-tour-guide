@@ -2,6 +2,7 @@ package com.yuluo.tourguide.app;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
@@ -20,7 +21,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 /**
- * 智能导游对话应用层：驱动已装配的 ChatClient 完成 AI 对话
+ * 智能导游对话应用层
  */
 @Slf4j
 @Service
@@ -84,7 +85,8 @@ public class GuideApp {
                 .content()
                 // 百炼兼容模式首包可能是空串，过滤后避免下发空 data 事件
                 .filter(StrUtil::isNotEmpty)
-                .map(chunk -> ServerSentEvent.<String>builder(chunk).event("message").build());
+                // JSON 字符串封装：SSE 规范会剥掉 data 值的一个前导空格，裸文本分片会丢空格破坏 markdown
+                .map(chunk -> ServerSentEvent.<String>builder(JSONUtil.quote(chunk)).event("message").build());
 
         return Flux.just(
                         ServerSentEvent.<String>builder(resolvedConversationId).event("conversation").build())

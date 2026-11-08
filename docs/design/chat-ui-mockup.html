@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 导游 · 阿尼亚粉设计稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --milk: #FFF7F9;        /* 奶粉粉：页面底 */
+    --shake: #FFE9F1;       /* 草莓奶昔：侧栏 */
+    --jam: #F2679B;         /* 草莓酱：主色 */
+    --jam-deep: #E14E86;
+    --cocoa: #573B47;       /* 可可棕：文字 */
+    --cocoa-soft: #9A7282;
+    --star: #FFCF5C;        /* 星星黄 */
+    --mint: #8FD6C3;        /* 薄荷糖 */
+    --line: #F5C3D6;        /* 线稿粉 */
+    --sticker-shadow: #F8D3E1;
+    --display: 'ZCOOL KuaiLe', 'YouYuan', 'Yuanti SC', 'Microsoft Yahei', sans-serif;
+    --body: 'YouYuan', 'Yuanti SC', 'PingFang SC', 'Microsoft Yahei', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--body);
+    background: var(--milk);
+    color: var(--cocoa);
+    overflow: hidden;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--jam); outline-offset: 2px; border-radius: 8px; }
+
+  /* 滚动条：草莓酱圆头细滚动条（Firefox 回落到标准属性） */
+  @supports not selector(::-webkit-scrollbar) {
+    .history, .chat-scroll, textarea {
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+    }
+  }
+  .history::-webkit-scrollbar, .chat-scroll::-webkit-scrollbar, textarea::-webkit-scrollbar { width: 8px; }
+  .history::-webkit-scrollbar-track, .chat-scroll::-webkit-scrollbar-track, textarea::-webkit-scrollbar-track { background: transparent; }
+  .history::-webkit-scrollbar-thumb, .chat-scroll::-webkit-scrollbar-thumb, textarea::-webkit-scrollbar-thumb {
+    background: var(--line); border-radius: 999px;
+  }
+  .history::-webkit-scrollbar-thumb:hover, .chat-scroll::-webkit-scrollbar-thumb:hover, textarea::-webkit-scrollbar-thumb:hover { background: var(--jam); }
+
+  .app { display: flex; height: 100vh; }
+
+  /* ---------- 侧栏 ---------- */
+  .sidebar {
+    width: 264px; flex-shrink: 0;
+    background: var(--shake);
+    border-right: 2px dashed var(--line);
+    display: flex; flex-direction: column;
+    padding: 18px 14px 14px;
+    transition: margin-left .25s ease;
+    z-index: 20;
+  }
+  .sidebar.closed { margin-left: -264px; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 2px 8px 16px;
+  }
+  .brand-badge {
+    width: 38px; height: 38px; border-radius: 50% 50% 50% 14px;
+    background: var(--jam); display: grid; place-items: center;
+    box-shadow: 0 3px 0 var(--sticker-shadow);
+  }
+  .brand-badge svg { width: 22px; height: 22px; }
+  .brand-name { font-family: var(--display); font-size: 24px; letter-spacing: 1px; }
+  .brand-name em { font-style: normal; color: var(--jam); }
+  .brand .side-toggle {
+    margin-left: auto; background: none; border: none; color: var(--cocoa-soft);
+    width: 30px; height: 30px; border-radius: 8px; font-size: 16px;
+  }
+  .brand .side-toggle:hover { background: #FFDCE9; color: var(--cocoa); }
+
+  .new-chat {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 11px 0;
+    background: #fff; color: var(--cocoa);
+    border: 2px solid var(--line); border-radius: 16px 18px 15px 19px;
+    box-shadow: 0 3px 0 var(--sticker-shadow);
+    font-size: 15px; font-weight: bold;
+  }
+  .new-chat:hover { border-color: var(--jam); color: var(--jam-deep); }
+  .new-chat .plus { color: var(--jam); font-size: 17px; line-height: 1; }
+
+  .history { flex: 1; overflow-y: auto; margin-top: 18px; padding-right: 2px; }
+  .history-group { font-size: 12px; color: var(--cocoa-soft); padding: 12px 10px 6px; }
+  .history-item {
+    display: block; width: 100%; text-align: left;
+    background: none; border: 2px solid transparent;
+    padding: 9px 10px; margin-bottom: 2px;
+    border-radius: 12px; font-size: 14px; color: var(--cocoa);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .history-item:hover { background: #FFDCE9; }
+  .history-item.active {
+    background: #fff; border-color: var(--line);
+    box-shadow: 0 2px 0 var(--sticker-shadow);
+  }
+  .history-item .dot { color: var(--jam); margin-right: 6px; }
+
+  .user-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 8px 2px; border-top: 2px dashed var(--line); margin-top: 8px;
+  }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--star); color: var(--cocoa);
+    display: grid; place-items: center; font-weight: bold; font-size: 15px;
+    border: 2px solid #fff;
+  }
+  .user-name { font-size: 14px; font-weight: bold; }
+
+  /* ---------- 主区 ---------- */
+  .main { flex: 1; position: relative; display: flex; flex-direction: column; min-width: 0; }
+
+  /* 背景地标层：彩色旅行徽章 */
+  .scenery { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .landmark {
+    position: absolute; opacity: .82;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    background: #FFFDFC; border: 3px solid var(--badge);
+    border-radius: 50%;
+    box-shadow: 0 4px 0 var(--sticker-shadow);
+  }
+  .landmark::after {
+    content: ''; position: absolute; inset: 5px;
+    border: 2px dashed var(--badge); border-radius: 50%; opacity: .4;
+  }
+  .landmark svg { width: 56%; height: 56%; display: block; }
+  .lm-name { font-size: 11px; font-weight: bold; letter-spacing: 2px; color: var(--cocoa-soft); }
+  .lm-pearl   { --badge: #F2679B; width: 132px; height: 132px; left: 5%;  top: 7%;  transform: rotate(-5deg); }
+  .lm-skytree { --badge: #7CC7DE; width: 120px; height: 120px; right: 7%; top: 6%;  transform: rotate(4deg); }
+  .lm-tokyo   { --badge: #F0705F; width: 126px; height: 126px; left: 10%; bottom: 9%; transform: rotate(4deg); }
+  .lm-palace  { --badge: #FFC94D; width: 150px; height: 150px; right: 16%; bottom: 7%; transform: rotate(-3deg); }
+  .lm-bigben  { --badge: #E0A63C; width: 106px; height: 106px; right: 4%; top: 44%; transform: rotate(-4deg); opacity: .72; }
+  .route { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .route path {
+    fill: none; stroke: var(--line); stroke-width: 2.5;
+    stroke-dasharray: 7 9; stroke-linecap: round; opacity: .7;
+  }
+  .route .plane { color: var(--jam); opacity: .8; }
+  .sparkle { position: absolute; color: var(--star); font-size: 15px; opacity: .8; }
+  .sparkle.pink { color: var(--line); }
+  .sp1 { left: 26%; top: 14%; } .sp2 { right: 28%; top: 24%; font-size: 11px; }
+  .sp3 { left: 30%; bottom: 16%; font-size: 12px; } .sp4 { right: 10%; bottom: 30%; }
+  .sp5 { left: 4%; top: 48%; font-size: 11px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .route path { stroke-dashoffset: 1200; animation: draw 2.6s ease-out forwards; }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+  }
+
+  /* 顶部浮动开关（侧栏收起时） */
+  .open-side {
+    position: absolute; top: 16px; left: 16px; z-index: 15;
+    width: 38px; height: 38px; border-radius: 12px;
+    background: #fff; border: 2px solid var(--line);
+    box-shadow: 0 3px 0 var(--sticker-shadow);
+    color: var(--jam); font-size: 17px; display: none;
+  }
+  .sidebar.closed ~ .main .open-side { display: block; }
+
+  /* ---------- 欢迎视图 ---------- */
+  .view { position: relative; z-index: 5; flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+  .welcome { justify-content: center; align-items: center; padding: 40px 24px; }
+  .welcome-inner { width: min(720px, 100%); text-align: center; margin-top: -6vh; }
+  .greeting {
+    font-family: var(--display); font-size: clamp(26px, 3.4vw, 36px);
+    letter-spacing: 1px; margin-bottom: 30px; font-weight: normal;
+  }
+  .greeting .sun { display: inline-block; vertical-align: -6px; margin-right: 10px; width: 40px; height: 40px; }
+
+  /* 输入卡（贴纸感） */
+  .composer {
+    background: #fff; border: 2px solid var(--line);
+    border-radius: 24px 26px 22px 28px;
+    box-shadow: 0 5px 0 var(--sticker-shadow);
+    padding: 16px 16px 12px; text-align: left;
+    transition: border-color .15s;
+  }
+  .composer:focus-within { border-color: var(--jam); }
+  .composer textarea {
+    width: 100%; border: none; resize: none; background: transparent;
+    font-family: var(--body); font-size: 16px; color: var(--cocoa);
+    min-height: 52px; max-height: 160px; line-height: 1.6;
+  }
+  .composer textarea:focus { outline: none; }
+  .composer textarea::placeholder { color: #C9A3B2; }
+  .composer-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 13px; border-radius: 999px;
+    border: 2px solid var(--line); background: var(--milk);
+    color: var(--cocoa-soft); font-size: 13px; font-weight: bold;
+    white-space: nowrap;
+  }
+  .chip svg { width: 15px; height: 15px; }
+  .chip[aria-pressed="true"] { background: var(--jam); border-color: var(--jam); color: #fff; }
+  .chip.mint[aria-pressed="true"] { background: var(--mint); border-color: var(--mint); color: #3E6157; }
+  .composer-bar .spacer { flex: 1; }
+  .attach {
+    background: none; border: none; color: var(--cocoa-soft);
+    width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  }
+  .attach:hover { background: var(--shake); color: var(--cocoa); }
+  .attach svg { width: 19px; height: 19px; }
+  .send {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--jam); border: none; color: #fff;
+    display: grid; place-items: center;
+    box-shadow: 0 3px 0 var(--jam-deep);
+    transition: transform .1s;
+  }
+  .send:hover { transform: translateY(-1px); }
+  .send:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--jam-deep); }
+  .send:disabled { background: #F6B9CF; box-shadow: 0 3px 0 #EDA3BF; cursor: default; transform: none; }
+  .send svg { width: 20px; height: 20px; }
+
+  .suggests { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; }
+  .suggest {
+    background: #fff; border: 2px solid var(--line);
+    border-radius: 999px; padding: 8px 16px;
+    font-size: 13px; color: var(--cocoa-soft);
+    box-shadow: 0 2px 0 var(--sticker-shadow);
+  }
+  .suggest:hover { color: var(--jam-deep); border-color: var(--jam); }
+  .suggest .q-star { color: var(--star); margin-right: 5px; }
+
+  /* ---------- 对话视图 ---------- */
+  .chat { display: none; }
+  .chat.show { display: flex; }
+  .welcome.hide { display: none; }
+  .chat-scroll { flex: 1; overflow-y: auto; padding: 28px 24px 16px; }
+  .chat-column { width: min(760px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  .msg-user { align-self: flex-end; max-width: 78%; }
+  .msg-user .bubble {
+    background: var(--jam); color: #fff;
+    padding: 12px 18px; font-size: 15px; line-height: 1.7;
+    border-radius: 20px 20px 6px 20px;
+    box-shadow: 0 3px 0 var(--jam-deep);
+  }
+  .msg-ai { display: flex; gap: 12px; align-items: flex-start; }
+  .ai-avatar {
+    width: 36px; height: 36px; flex-shrink: 0;
+    border-radius: 50% 50% 50% 12px;
+    background: var(--jam); display: grid; place-items: center;
+    box-shadow: 0 2px 0 var(--sticker-shadow);
+  }
+  .ai-avatar svg { width: 21px; height: 21px; }
+  .msg-ai .bubble {
+    background: #fff; border: 2px solid var(--line);
+    border-radius: 6px 22px 22px 22px;
+    box-shadow: 0 4px 0 var(--sticker-shadow);
+    padding: 14px 18px; font-size: 15px; line-height: 1.85;
+    white-space: pre-wrap; max-width: calc(100% - 48px);
+  }
+  .typing { display: inline-flex; gap: 5px; padding: 6px 2px; }
+  .typing i {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--line);
+    animation: blink 1s infinite ease-in-out;
+  }
+  .typing i:nth-child(2) { animation-delay: .18s; }
+  .typing i:nth-child(3) { animation-delay: .36s; }
+  @keyframes blink { 0%, 100% { opacity: .35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+  .chat .composer-wrap { padding: 10px 24px 22px; }
+  .chat .composer-wrap .composer { width: min(760px, 100%); margin: 0 auto; }
+  .chat-footnote { text-align: center; font-size: 12px; color: #C9A3B2; padding-top: 10px; }
+
+  /* ---------- 响应式 ---------- */
+  @media (max-width: 860px) {
+    .sidebar { position: absolute; left: 0; top: 0; bottom: 0; box-shadow: 6px 0 24px rgba(87,59,71,.08); }
+    .sidebar.closed { margin-left: -280px; }
+    .open-side { display: block !important; }
+    .lm-palace { right: 4%; }
+    .lm-bigben { display: none; }
+    .welcome-inner { margin-top: -2vh; }
+  }
+  @media (max-width: 480px) {
+    .chip { padding: 6px 10px; font-size: 12px; }
+    .composer-bar { gap: 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 手绘线稿地标 symbol 库 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="lm-pearl-shape">
+      <rect x="48.5" y="2" width="3" height="14" rx="1.5" fill="#E14E86" />
+      <circle cx="50" cy="22" r="6" fill="#F2679B" />
+      <rect x="46" y="28" width="8" height="13" fill="#F9A8C6" />
+      <circle cx="50" cy="51" r="11" fill="#F2679B" />
+      <circle cx="46" cy="47" r="3" fill="#fff" opacity=".65" />
+      <rect x="45.5" y="61" width="9" height="9" fill="#F9A8C6" />
+      <circle cx="50" cy="79" r="14" fill="#F2679B" />
+      <circle cx="45" cy="74" r="4" fill="#fff" opacity=".65" />
+      <path d="M40 89 L32 98 M60 89 L68 98 M50 93 V98" stroke="#E14E86" stroke-width="3" stroke-linecap="round" fill="none" />
+    </g>
+    <g id="lm-tokyo-shape">
+      <rect x="48.5" y="2" width="3" height="12" rx="1.5" fill="#E85D4A" />
+      <path d="M50 12 C47 40 40 70 30 96 L70 96 C60 70 53 40 50 12 Z" fill="#F0705F" />
+      <path d="M43 52 L57 64 M57 52 L43 64 M37 74 L63 92 M63 74 L37 92" stroke="#FFFDFC" stroke-width="2" opacity=".8" fill="none" />
+      <rect x="38" y="44" width="24" height="8" rx="3" fill="#FFFDFC" />
+      <rect x="33" y="66" width="34" height="7" rx="3" fill="#FFFDFC" />
+    </g>
+    <g id="lm-skytree-shape">
+      <rect x="48.5" y="2" width="3" height="16" rx="1.5" fill="#4FA8C7" />
+      <path d="M46 18 C45 45 40 72 34 96 L66 96 C60 72 55 45 54 18 Z" fill="#7CC7DE" />
+      <path d="M44 72 L56 82 M56 72 L44 82" stroke="#FFFDFC" stroke-width="2" opacity=".75" fill="none" />
+      <rect x="37" y="36" width="26" height="8" rx="4" fill="#4FA8C7" />
+      <rect x="33" y="60" width="34" height="8" rx="4" fill="#4FA8C7" />
+    </g>
+    <g id="lm-palace-shape">
+      <rect x="30" y="14" width="40" height="5" rx="2.5" fill="#E8A23C" />
+      <path d="M30 19 Q50 14 70 19 L78 32 Q50 26 22 32 Z" fill="#FFC94D" />
+      <rect x="30" y="32" width="40" height="11" fill="#E86A5E" />
+      <path d="M24 41 Q50 36 76 41 L86 52 Q50 45 14 52 Z" fill="#FFC94D" />
+      <rect x="24" y="52" width="52" height="22" fill="#E86A5E" />
+      <rect x="30" y="54" width="4" height="18" fill="#C94F42" />
+      <rect x="42" y="54" width="4" height="18" fill="#C94F42" />
+      <rect x="54" y="54" width="4" height="18" fill="#C94F42" />
+      <rect x="66" y="54" width="4" height="18" fill="#C94F42" />
+      <rect x="46" y="58" width="8" height="16" fill="#8C3B33" />
+      <rect x="18" y="74" width="64" height="6" fill="#F6E3D7" />
+      <rect x="14" y="80" width="72" height="5" fill="#EAD5C8" />
+    </g>
+    <g id="lm-bigben-shape">
+      <path d="M50 4 L62 30 L38 30 Z" fill="#C98A2E" />
+      <rect x="36" y="30" width="28" height="62" fill="#E0A63C" />
+      <circle cx="50" cy="46" r="10" fill="#FFFDFC" />
+      <path d="M50 46 V39 M50 46 L55 49" stroke="#573B47" stroke-width="2" stroke-linecap="round" fill="none" />
+      <rect x="42" y="62" width="16" height="4" rx="2" fill="#C98A2E" />
+      <rect x="42" y="72" width="16" height="4" rx="2" fill="#C98A2E" />
+      <rect x="42" y="82" width="16" height="4" rx="2" fill="#C98A2E" />
+      <rect x="32" y="92" width="36" height="5" rx="2" fill="#C98A2E" />
+    </g>
+    <g id="icon-plane" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 13 L21 5 L13 21 L11 14 Z M11 14 L21 5" />
+    </g>
+    <g id="icon-compass" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15.5 8.5 L13.5 13.5 L8.5 15.5 L10.5 10.5 Z" />
+    </g>
+    <g id="icon-globe" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12 H21 M12 3 C8 7.5 8 16.5 12 21 C16 16.5 16 7.5 12 3" />
+    </g>
+    <g id="icon-clip" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 12 L14 6 Q17 3 19.5 5.5 Q22 8 19 11 L11 19 Q7.5 22.5 4.5 19.5 Q1.5 16.5 5 13 L12 6" />
+    </g>
+    <g id="icon-send" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20 V5 M5.5 11.5 L12 5 L18.5 11.5" />
+    </g>
+  </defs>
+</svg>
+
+<div class="app">
+  <!-- 侧栏 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-badge">
+        <svg viewBox="0 0 24 24" style="color:#fff"><use href="#icon-plane"/></svg>
+      </span>
+      <span class="brand-name">AI <em>导游</em></span>
+      <button class="side-toggle" id="closeSide" title="收起侧栏">◨</button>
+    </div>
+    <button class="new-chat" id="newChat"><span class="plus">✚</span> 开启新对话</button>
+    <nav class="history" id="history">
+      <div class="history-group">今天</div>
+      <button class="history-item" data-topic="东京亲子三日游"><span class="dot">✦</span>东京亲子三日游</button>
+      <button class="history-item" data-topic="迪士尼不排队攻略"><span class="dot">✦</span>迪士尼不排队攻略</button>
+      <div class="history-group">昨天</div>
+      <button class="history-item" data-topic="故宫半日速通路线"><span class="dot">✦</span>故宫半日速通路线</button>
+      <button class="history-item" data-topic="上海外滩夜景机位"><span class="dot">✦</span>上海外滩夜景机位</button>
+      <div class="history-group">7 天内</div>
+      <button class="history-item" data-topic="大阪美食雷达"><span class="dot">✦</span>大阪美食雷达</button>
+      <button class="history-item" data-topic="晴空塔观景攻略"><span class="dot">✦</span>晴空塔观景攻略</button>
+      <button class="history-item" data-topic="东方明珠门票怎么买"><span class="dot">✦</span>东方明珠门票怎么买</button>
+      <button class="history-item" data-topic="伦敦大本钟周边漫步"><span class="dot">✦</span>伦敦大本钟周边漫步</button>
+    </nav>
+    <div class="user-card">
+      <span class="avatar">Y</span>
+      <span class="user-name">Yuan</span>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <!-- 背景：地标线稿 + 虚线航线 -->
+    <div class="scenery" aria-hidden="true">
+      <svg class="route" viewBox="0 0 1200 800" preserveAspectRatio="none">
+        <path d="M120 150 C 320 60, 520 210, 640 130 S 950 60, 1060 140" />
+        <path d="M170 640 C 360 720, 620 600, 800 680 S 1050 640, 1130 480" />
+        <g class="plane" transform="translate(1052,128) rotate(18)">
+          <path d="M0 8 L20 0 L12 16 L10 10 Z" fill="currentColor" stroke="none"/>
+        </g>
+      </svg>
+      <div class="landmark lm-pearl"><svg viewBox="0 0 100 100"><use href="#lm-pearl-shape"/></svg><span class="lm-name">东方明珠</span></div>
+      <div class="landmark lm-skytree"><svg viewBox="0 0 100 100"><use href="#lm-skytree-shape"/></svg><span class="lm-name">晴空塔</span></div>
+      <div class="landmark lm-tokyo"><svg viewBox="0 0 100 100"><use href="#lm-tokyo-shape"/></svg><span class="lm-name">东京塔</span></div>
+      <div class="landmark lm-palace"><svg viewBox="0 0 100 100"><use href="#lm-palace-shape"/></svg><span class="lm-name">故宫</span></div>
+      <div class="landmark lm-bigben"><svg viewBox="0 0 100 100"><use href="#lm-bigben-shape"/></svg><span class="lm-name">大本钟</span></div>
+      <span class="sparkle sp1">✦</span><span class="sparkle sp2 pink">✦</span>
+      <span class="sparkle sp3 pink">✦</span><span class="sparkle sp4">✦</span>
+      <span class="sparkle sp5">✦</span>
+    </div>
+
+    <button class="open-side" id="openSide" title="展开侧栏">◧</button>
+
+    <!-- 欢迎视图 -->
+    <section class="view welcome" id="welcomeView">
+      <div class="welcome-inner">
+        <h1 class="greeting">
+          <svg class="sun" viewBox="0 0 40 40" aria-hidden="true">
+            <circle cx="20" cy="20" r="9" fill="#FFCF5C"/>
+            <g stroke="#FFCF5C" stroke-width="3" stroke-linecap="round">
+              <path d="M20 3 V8 M20 32 V37 M3 20 H8 M32 20 H37 M8 8 L11.5 11.5 M28.5 28.5 L32 32 M32 8 L28.5 11.5 M11.5 28.5 L8 32"/>
+            </g>
+            <circle cx="17" cy="19" r="1.3" fill="#573B47"/><circle cx="23" cy="19" r="1.3" fill="#573B47"/>
+            <path d="M17 23 Q20 25.5 23 23" stroke="#573B47" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          </svg>我是小玲，你的旅行军师
+        </h1>
+        <div class="composer">
+          <textarea id="welcomeInput" rows="2" placeholder="问问小玲，比如：帮我安排周六当天的出行方案"></textarea>
+          <div class="composer-bar">
+            <button class="chip" aria-pressed="false" data-chip>
+              <svg viewBox="0 0 24 24"><use href="#icon-compass"/></svg>行程规划
+            </button>
+            <button class="chip mint" aria-pressed="false" data-chip>
+              <svg viewBox="0 0 24 24"><use href="#icon-globe"/></svg>智能搜索
+            </button>
+            <span class="spacer"></span>
+            <button class="attach" title="添加附件">
+              <svg viewBox="0 0 24 24"><use href="#icon-clip"/></svg>
+            </button>
+            <button class="send" id="welcomeSend" title="发送">
+              <svg viewBox="0 0 24 24"><use href="#icon-send"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="suggests">
+          <button class="suggest" data-q="东京三日怎么玩？"><span class="q-star">✦</span>东京三日怎么玩？</button>
+          <button class="suggest" data-q="故宫半日速通路线"><span class="q-star">✦</span>故宫半日速通路线</button>
+          <button class="suggest" data-q="上海夜景哪里拍最好看？"><span class="q-star">✦</span>上海夜景哪里拍最好看？</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 对话视图 -->
+    <section class="view chat" id="chatView">
+      <div class="chat-scroll" id="chatScroll">
+        <div class="chat-column" id="chatColumn"></div>
+      </div>
+      <div class="composer-wrap">
+        <div class="composer">
+          <textarea id="chatInput" rows="1" placeholder="继续追问，比如：第二天可以换成镰仓吗？"></textarea>
+          <div class="composer-bar">
+            <button class="chip" aria-pressed="false" data-chip>
+              <svg viewBox="0 0 24 24"><use href="#icon-compass"/></svg>行程规划
+            </button>
+            <button class="chip mint" aria-pressed="false" data-chip>
+              <svg viewBox="0 0 24 24"><use href="#icon-globe"/></svg>智能搜索
+            </button>
+            <span class="spacer"></span>
+            <button class="attach" title="添加附件">
+              <svg viewBox="0 0 24 24"><use href="#icon-clip"/></svg>
+            </button>
+            <button class="send" id="chatSend" title="发送">
+              <svg viewBox="0 0 24 24"><use href="#icon-send"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="chat-footnote">小玲的回答仅供参考，出行前请核实开放时间与票务信息</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  const sidebar = document.getElementById('sidebar');
+  const welcomeView = document.getElementById('welcomeView');
+  const chatView = document.getElementById('chatView');
+  const chatColumn = document.getElementById('chatColumn');
+  const chatScroll = document.getElementById('chatScroll');
+  const welcomeInput = document.getElementById('welcomeInput');
+  const chatInput = document.getElementById('chatInput');
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  document.getElementById('closeSide').onclick = () => sidebar.classList.add('closed');
+  document.getElementById('openSide').onclick = () => sidebar.classList.remove('closed');
+  if (innerWidth <= 860) sidebar.classList.add('closed');
+
+  document.querySelectorAll('[data-chip]').forEach(chip => {
+    chip.onclick = () => chip.setAttribute('aria-pressed', chip.getAttribute('aria-pressed') !== 'true');
+  });
+
+  const demoReply = '好呀，这条路线帮你排得松松的 ✦\n\n第一天 · 浅草 & 晴空塔\n上午逛浅草寺和仲见世商店街，下午慢慢走到晴空塔，傍晚登塔看日落，夜景一次收齐。\n\n第二天 · 上野 & 谷根千\n上野公园散步，午后在谷中银座吃小食，节奏很轻。\n\n第三天 · 台场\n海边散步 + 高达立像，晚上看彩虹桥灯光。\n\n要不要我把每天的美食也标进去？';
+
+  function showChat() {
+    welcomeView.classList.add('hide');
+    chatView.classList.add('show');
+    chatInput.focus();
+  }
+  function showWelcome() {
+    chatView.classList.remove('show');
+    welcomeView.classList.remove('hide');
+    chatColumn.innerHTML = '';
+    welcomeInput.value = '';
+    document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+    welcomeInput.focus();
+  }
+  document.getElementById('newChat').onclick = showWelcome;
+
+  function addUser(text) {
+    const div = document.createElement('div');
+    div.className = 'msg-user';
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    b.textContent = text;
+    div.appendChild(b);
+    chatColumn.appendChild(div);
+    scrollBottom();
+  }
+  function addAiReply() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-ai';
+    wrap.innerHTML = '<span class="ai-avatar"><svg viewBox="0 0 24 24" style="color:#fff"><use href="#icon-plane"/></svg></span>';
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    b.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+    wrap.appendChild(b);
+    chatColumn.appendChild(wrap);
+    scrollBottom();
+    setTimeout(() => {
+      b.textContent = '';
+      if (reducedMotion) { b.textContent = demoReply; scrollBottom(); return; }
+      let i = 0;
+      const timer = setInterval(() => {
+        i += 3;
+        b.textContent = demoReply.slice(0, i);
+        scrollBottom();
+        if (i >= demoReply.length) clearInterval(timer);
+      }, 24);
+    }, 800);
+  }
+  function scrollBottom() { chatScroll.scrollTop = chatScroll.scrollHeight; }
+
+  function send(text) {
+    text = text.trim();
+    if (!text) return;
+    showChat();
+    addUser(text);
+    addAiReply();
+  }
+
+  document.getElementById('welcomeSend').onclick = () => send(welcomeInput.value);
+  document.getElementById('chatSend').onclick = () => { send(chatInput.value); chatInput.value = ''; };
+  welcomeInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(welcomeInput.value); }
+  });
+  chatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(chatInput.value); chatInput.value = ''; }
+  });
+  document.querySelectorAll('.suggest').forEach(s => { s.onclick = () => send(s.dataset.q); });
+  document.querySelectorAll('.history-item').forEach(item => {
+    item.onclick = () => {
+      document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      chatColumn.innerHTML = '';
+      showChat();
+      addUser(item.dataset.topic);
+      addAiReply();
+      if (innerWidth <= 860) sidebar.classList.add('closed');
+    };
+  });
+</script>
+</body>
+</html>
