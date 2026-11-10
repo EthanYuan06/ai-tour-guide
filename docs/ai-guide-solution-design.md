@@ -17,7 +17,7 @@
 - **接入层**：Vue3 + Vite 构建的响应式 Web 界面，负责对话交互、流式渲染与行程展示。
 - **应用层**：Spring Boot 承载 ChatClient、复杂度路由、RAG 检索、ReAct Agent、Supervisor 编排与记忆管理。
 - **能力与数据层**：DashScope 大模型、Tavily/Firecrawl 联网 API、高德 MCP 服务，以及 MySQL、PostgreSQL（pgvector）、Redis 三类存储。
-- **调用关系**：前端请求应用层（阶段二起经登录鉴权）；路由节点决定直连或 Agent；两条链路按需触发 RAG 检索；Agent 通过 MCP Client 与联网工具完成任务；MVP 采用内存会话，阶段二起改用 SAA 内置的 RedisChatMemory 承载对话记忆，业务数据存 MySQL。
+- **调用关系**：前端请求应用层（阶段二起经登录鉴权）；路由节点决定直连或 Agent；两条链路按需触发 RAG 检索；Agent 通过 MCP Client 与联网工具完成任务；对话记忆已从内存实现切换为 Spring AI 内置 JdbcChatMemoryRepository + MySQL 持久化（原 SAA RedisChatMemory 方案暂缓），业务数据存 MySQL。
 
 ### 1.3 目标架构流程图
 
@@ -122,15 +122,15 @@ graph TD
 
 | 存储 | 职责 | 引入阶段 | 选型理由 |
 |---|---|---|---|
-| MySQL | 业务数据持久化 | 阶段二（登录模块起） | 关系型主库，承载用户、行程等业务数据 |
+| MySQL | 业务数据持久化 + 对话记忆（JdbcChatMemoryRepository） | 对话记忆已落地；业务数据阶段二（登录模块起） | 关系型主库，承载用户、行程等业务数据；记忆落库后重启可恢复 |
 | PostgreSQL + pgvector | RAG 知识库向量存储与相似检索 | 阶段二 | 单库同时承载文档与向量，支持精确/近似最近邻，Spring AI 提供 PGvector VectorStore |
-| Redis | 基于 SAA RedisChatMemory 的对话记忆 | 阶段二 | 读写延迟低，直接使用框架内置的 RedisChatMemory，无需手写序列化与缓存逻辑 |
+| Redis | 对话记忆高速缓存（备选，暂缓） | 待定 | 原阶段二方案为 SAA RedisChatMemory，现改为 MySQL JDBC 方案先行；后续若有高并发读压力再评估引入 |
 
-说明：MVP 阶段不引入任何数据库，记忆仍保存在内存；存储三件套从阶段二开始落地，按「登录模块 → Redis 会话记忆 → 知识库建设 → 向量检索 → RAG 全链路」的优先级推进，RAG 初期可先用轻量内存向量存储跑通，再迁移到 pgvector。
+说明：对话记忆已随本次改造落地 MySQL（Spring AI 官方 JdbcChatMemoryRepository，启动自动建表）；其余存储按「登录模块 → 知识库建设 → 向量检索 → RAG 全链路」的优先级推进，RAG 初期可先用轻量内存向量存储跑通，再迁移到 pgvector。
 
 ### 2.4 记忆实现方式：直接使用框架组件
 
-不自行实现记忆序列化，直接使用 SAA 内置的记忆组件：MVP 用内存实现，阶段二起用 RedisChatMemory。原因是通用 JSON 序列化与 Spring AI 的 Message 接口不兼容，手写消息转换与序列化逻辑成本高且易出错；框架组件已封装存储格式与读写流程，开箱即用。
+不自行实现记忆序列化，直接使用 Spring AI 内置的记忆组件：MVP 用内存实现，现已切换为 JdbcChatMemoryRepository + MySQL（`spring-ai-starter-model-chat-memory-repository-jdbc`，显式装配 MessageWindowChatMemory，窗口 20）。原因是通用 JSON 序列化与 Spring AI 的 Message 接口不兼容，手写消息转换与序列化逻辑成本高且易出错；框架组件已封装存储格式与读写流程，开箱即用。已知边界：JDBC Repository 不支持工具调用消息的持久化，阶段三引入 Agent 工具调用时需重新评估。
 
 ### 2.5 联网检索与 MCP 接入
 
@@ -158,7 +158,7 @@ graph TD
 1. **环境与账号准备**：安装 JDK 17+、Node.js 与 Git；申请 DashScope、Tavily、Firecrawl、高德开放平台 Key 并验证可用性。
 2. **工程骨架**：后端用 Spring Initializr 搭建 Boot 3.5.x 工程并引入 SAA BOM；前端用 Vite 创建 Vue3 工程；约定前后端接口规范与目录结构。
 3. **阶段一 MVP 开发**：完成 ChatClient 接入、系统提示词、内存会话、流式输出与对话界面，按验收门禁通过后再进入下一阶段。
-4. **阶段二 登录与持久化 + RAG**：按优先级依次开发登录模块（MySQL）、RedisChatMemory 会话记忆缓存、知识库建设（从内存到 PGVector）、向量检索（先内存跑通再迁移 PGVector）、RAG 全链路搭建（按需触发）。
+4. **阶段二 登录与持久化 + RAG**：按优先级依次开发登录模块（MySQL）、知识库建设（从内存到 PGVector）、向量检索（先内存跑通再迁移 PGVector）、RAG 全链路搭建（按需触发）。会话记忆持久化已提前以 JdbcChatMemoryRepository + MySQL 落地。
 5. **阶段三 Agent 与联网**：实现复杂度路由与 ReAct Agent，接入 Tavily/Firecrawl，补齐工具调用日志与失败处理。
 6. **阶段四 MCP 与多智能体**：接入高德 MCP，将单 Agent 演进为 Supervisor 架构并验证子 Agent 并发，接入可观测能力。
 7. **阶段验收门禁**：每阶段完成后对照 Task 表验收，未通过不进入下一阶段；问题记录到风险清单并优先修复。
@@ -181,12 +181,12 @@ graph TD
 
 ### 阶段二：登录模块 + RAG 与持久化
 
-> 开发优先级（从高到低）：登录模块 → Redis 缓存会话记忆 → 知识库建设（从内存到 PGVector）→ 向量检索（先在内存跑通、再迁移至 PGVector）→ RAG 全链路搭建（按需触发、查询增强、向量检索、返回）。
+> 开发优先级（从高到低）：登录模块 → 知识库建设（从内存到 PGVector）→ 向量检索（先在内存跑通、再迁移至 PGVector）→ RAG 全链路搭建（按需触发、查询增强、向量检索、返回）。会话记忆持久化已提前完成（JdbcChatMemoryRepository + MySQL）。
 
 | 优先级 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
 |---|---|---|---|---|---|
 | 1 | 登录模块 | 基于 MySQL 的用户注册/登录，密码加密存储与登录态校验 | 认证接口与用户表 | 注册/登录可调通，密码不明文存储，未认证请求可被拦截 | MVP 验收 |
-| 2 | RedisChatMemory 接入 | 用 SAA RedisChatMemory 替换内存实现，会话记忆缓存写入 Redis | RedisChatMemory 配置 | 会话记忆可写入并读取，重启服务后历史可恢复 | 登录模块 |
+| 2 | 会话记忆持久化（已完成） | 用 Spring AI 内置 JdbcChatMemoryRepository 替换内存实现，会话记忆写入 MySQL（原 Redis 方案暂缓） | JDBC 记忆配置 | 会话记忆可写入并读取，重启服务后历史可恢复 | 登录模块 |
 | 3 | 知识库建设 | 旅游文档收集、清洗、切分与向量化，存储从内存演进到 PGVector | 知识文档与索引 | 文档可被检索，切分无明显断句问题 | 登录模块 |
 | 4 | 向量检索 | 先用内存向量存储跑通检索链路，再迁移至 PGVector | VectorStore 配置 | 相似问题能召回相关片段并注入上下文 | 知识库 |
 | 5 | RAG 全链路 | 按需触发：判定需要知识检索时执行查询增强、向量检索并返回结果 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发，来源可标注 | 向量检索 |
@@ -226,7 +226,7 @@ graph TD
 | Spring Boot 4 无 SAA 适配 | 强行升级导致自动装配/依赖冲突 | 主线锁定 Boot 3.5.x，跟踪官方兼容表，适配后再迁移 |
 | Agent 工具失败或循环 | 任务卡死、回复异常 | 设置超时、最大迭代次数与重试，失败降级为直连回答 |
 | 外部 API 成本与配额 | 调用费用超预期、限流 | 默认只调 Tavily，Firecrawl 按需触发；控制上下文长度与频次 |
-| 记忆存储可用性 | Redis 宕机或内存淘汰导致记忆丢失 | 开启 Redis 持久化与合理淘汰策略，异常时降级处理 |
+| 记忆存储可用性 | MySQL 不可用导致记忆读写失败 | 本机开发依赖 MySQL 服务常驻；连接失败时接口报错可观测，后续可评估降级或缓存策略 |
 | MCP 外部服务可用性 | 地图/天气工具不可用 | 捕获异常并提示，保留无工具的基础回答能力 |
 | 登录认证设计不当 | 越权访问、密码泄露 | 密码单向加密存储，Token 过期与接口鉴权统一在过滤层处理 |
 

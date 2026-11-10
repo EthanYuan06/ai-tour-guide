@@ -7,17 +7,23 @@ import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
 import com.yuluo.tourguide.model.dto.ChatResponse;
+import com.yuluo.tourguide.model.dto.ConversationMessage;
+import com.yuluo.tourguide.model.dto.ConversationSummary;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,6 +40,18 @@ public class GuideApp {
 
     @Resource
     private PromptTemplate tourGuideSystemPrompt;
+
+    /**
+     * 记忆存储库（JdbcChatMemoryRepository），历史消息查询用
+     */
+    @Resource
+    private ChatMemoryRepository chatMemoryRepository;
+
+    /**
+     * 会话列表聚合查询用：Repository 接口不暴露时间戳，直接查记忆表
+     */
+    @Resource
+    private JdbcTemplate jdbcTemplate;
 
     /**
      * 单轮对话，基于 conversationId 维护多轮上下文

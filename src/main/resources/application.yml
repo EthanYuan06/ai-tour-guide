@@ -4,11 +4,22 @@ spring:
   config:
     # 把项目根目录的 .env 当作 properties 文件导入（KEY=VALUE、# 注释），文件不存在时不报错
     import: optional:file:./.env[.properties]
+  datasource:
+    # 对话记忆持久化存储；allowPublicKeyRetrieval 适配 MySQL 8 caching_sha2_password 本地非 SSL 连接
+    url: jdbc:mysql://localhost:3306/ai_tour_guide?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}
   mvc:
     async:
       # 流式对话运行在 MVC 异步模式，容器默认 30s 空闲切断长回复
       request-timeout: 300000
   ai:
+    chat:
+      memory:
+        repository:
+          jdbc:
+            # 启动时执行 jar 内置 schema-mysql.sql 自动建表（CREATE TABLE IF NOT EXISTS，幂等）
+            initialize-schema: always
     retry:
       # 默认 max-attempts=10 且指数退避，同步接口异常时会长时间挂起，收敛为 3 次
       max-attempts: 3

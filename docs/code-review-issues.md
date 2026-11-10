@@ -11,7 +11,7 @@
 
 ## 中优先级
 
-- [ ] `conversationId` 无长度 / 格式上限校验：客户端可传超长字符串，InMemory 记忆无淘汰机制，会话键空间无限增长，存在内存泄漏面
+- [ ] `conversationId` 无长度 / 格式上限校验：记忆落库后 `SPRING_AI_CHAT_MEMORY.conversation_id` 为 VARCHAR(36)，客户端传超长 id 会直接 SQL 报错（原 InMemory 键空间无限增长问题随持久化改造消解，但入参校验仍缺失）
 - [ ] `message` 无最大长度校验：历史整改计划中约定的入参长度上限配置项未落地
 - [ ] `ConversationTokenAccumulator.accumulate` 返回缓存内活对象而非快照：`synchronized` 块外被 `MyLoggerAdvisor.after()` 读取，`long` 字段非 `volatile` 且无 happens-before 边，同会话并发轮次下日志可能读到混合 / 过期快照（存储计数本身正确，影响限于日志准确性）。修复：同步块内返回不可变副本，使「快照」契约成立
 - [ ] `MyLoggerAdvisor.adviseStream` 的 `onErrorResume` 将异常统一包装为 `IllegalStateException`：`before()` 抛出的 `BusinessException(PARAMS_ERROR)` 在 `GlobalExceptionHandler` 落入 `RuntimeException` 分支返回 500「系统错误」而非 400 参数错误，与 `ErrorCode` 语义化规范冲突。注：该包装与 `BaseAdvisor` 默认实现逐字一致，非本次引入的回归，但本次已显式接管该代码路径。修复：移除 `onErrorResume`，对齐官方 `SimpleLoggerAdvisor` 写法
@@ -21,7 +21,7 @@
 - [ ] `GlobalExceptionHandler.handleSseError` 残留 `/chat/gen/code` 路径判断：属其他项目复制残留，当前无 SSE 接口
 - [ ] `ChatRequest` 未使用 JSR-303 注解校验：依赖 app 层手动 `ThrowUtils` 校验，声明式校验更清晰
 - [ ] 请求体解析异常返回码语义不准：`HttpMessageNotReadableException` 落入通用 `RuntimeException` 分支返回 500，语义上更应映射为 400 参数错误
-- [ ] 会话累计 token 与 ChatMemory 同为单机内存态：进程重启即丢失、多实例不共享，现仅靠 TimedCache 按访问过期 2 小时缓解键空间增长，未解决多实例一致性
+- [ ] 会话累计 token 仍为单机内存态：进程重启即丢失、多实例不共享，现仅靠 TimedCache 按访问过期 2 小时缓解键空间增长（ChatMemory 已随 JDBC 改造持久化到 MySQL，此条仅指 token 累计器）
 - [ ] `MyLoggerAdvisor.hasTokens` 仅判断 `totalTokens > 0`：若模型只回传 prompt / completion 而省略 total，聚合后 total 恒为 0，该轮真实 token 会被整轮丢弃并记为「未上报」（百炼当前会回传 `total_tokens`，属潜在缺口）。修复：三个字段任一 > 0 即视为有效
 - [ ] `MyLoggerAdvisor.after` 用 `String.valueOf(conversationId)` 作累计器 key：null 会退化为字符串 `"null"`，把所有匿名请求静默合并进同一计数桶。当前被 `before()` 的非空校验挡住，属防御性缺口
 - [ ] `adviseStream` 覆写保留了 `Mono.just` / `publishOn` / `onErrorResume` 等冗余编排：1.1.2 官方 `SimpleLoggerAdvisor` 仅需「记录请求 → `chain.nextStream` → `aggregateChatClientResponse`」三步，收敛后可同时解掉上面的异常包装问题
