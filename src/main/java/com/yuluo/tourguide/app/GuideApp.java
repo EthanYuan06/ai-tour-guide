@@ -3,27 +3,22 @@ package com.yuluo.tourguide.app;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.yuluo.tourguide.common.ConversationConstants;
 import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
 import com.yuluo.tourguide.model.dto.ChatResponse;
-import com.yuluo.tourguide.model.dto.ConversationMessage;
-import com.yuluo.tourguide.model.dto.ConversationSummary;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,25 +28,13 @@ import java.util.Map;
 @Service
 public class GuideApp {
 
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
     @Resource
     private ChatClient tourGuideChatClient;
 
     @Resource
     private PromptTemplate tourGuideSystemPrompt;
 
-    /**
-     * 记忆存储库（JdbcChatMemoryRepository），历史消息查询用
-     */
-    @Resource
-    private ChatMemoryRepository chatMemoryRepository;
-
-    /**
-     * 会话列表聚合查询用：Repository 接口不暴露时间戳，直接查记忆表
-     */
-    @Resource
-    private JdbcTemplate jdbcTemplate;
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /**
      * 单轮对话，基于 conversationId 维护多轮上下文
@@ -114,6 +97,7 @@ public class GuideApp {
 
     /**
      * 会话 id 解析：空白则生成新 id，否则去空格返回，同步/流式入口共用同一规则
+     * 长度上限对齐记忆表 conversation_id 列，避免超长 id 落库时 SQL 报错
      */
     private String resolveConversationId(String conversationId) {
         if (StrUtil.isBlank(conversationId)) {
@@ -121,6 +105,9 @@ public class GuideApp {
             log.info("[chat] 生成新会话 id={}", newId);
             return newId;
         }
-        return conversationId.trim();
+        String trimmed = conversationId.trim();
+        ThrowUtils.throwIf(trimmed.length() > ConversationConstants.ID_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR, "会话 id 长度不能超过 " + ConversationConstants.ID_MAX_LENGTH);
+        return trimmed;
     }
 }

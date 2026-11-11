@@ -80,20 +80,35 @@ button { font-family: inherit; cursor: pointer; }
 .new-chat .plus { color: var(--jam); font-size: 17px; line-height: 1; }
 
 .history { flex: 1; overflow-y: auto; margin-top: 18px; padding-right: 2px; }
-.history-group { font-size: 12px; color: var(--cocoa-soft); padding: 12px 10px 6px; }
 .history-item {
-  display: block; width: 100%; text-align: left;
+  display: flex; align-items: center; width: 100%; text-align: left;
   background: none; border: 2px solid transparent;
   padding: 9px 10px; margin-bottom: 2px;
   border-radius: 12px; font-size: 14px; color: var(--cocoa);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden;
 }
 .history-item:hover { background: #FFDCE9; }
 .history-item.active {
   background: #fff; border-color: var(--line);
   box-shadow: 0 2px 0 var(--sticker-shadow);
 }
-.history-item .dot { color: var(--jam); margin-right: 6px; }
+.history-item .dot { color: var(--jam); margin-right: 6px; flex-shrink: 0; }
+.history-item .history-title {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* 删除入口：平时隐去，hover 或选中时显现，避免侧栏视觉噪音 */
+.history-item .del {
+  flex-shrink: 0; margin-left: 6px;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 14px; line-height: 1; color: var(--cocoa-soft);
+  opacity: 0; transition: opacity .15s ease, background .15s ease;
+}
+.history-item:hover .del, .history-item.active .del { opacity: .55; }
+.history-item .del:hover { opacity: 1; background: var(--jam); color: #fff; }
+/* 流式回复中切换与删除被拦截，侧栏同步置灰提示 */
+.history.busy { opacity: .5; pointer-events: none; }
 
 .user-card {
   display: flex; align-items: center; gap: 10px;

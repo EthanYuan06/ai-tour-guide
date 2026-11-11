@@ -7,8 +7,16 @@ import MessageItem from './components/MessageItem.vue'
 import ToastCard from './components/ToastCard.vue'
 import { useChat } from './composables/useChat'
 
-const { conversations, activeConversation, streaming, send, startNew, openConversation, dispose } =
-  useChat()
+const {
+  conversations,
+  activeConversation,
+  streaming,
+  send,
+  startNew,
+  openConversation,
+  removeConversation,
+  dispose,
+} = useChat()
 
 const sidebarClosed = ref(window.innerWidth <= 860)
 const welcomeText = ref('')
@@ -51,11 +59,20 @@ function handleSend(text: string) {
     nextTick(scrollToBottom)
   }
 }
-function handleOpen(key: number) {
+function handleOpen(key: string) {
   openConversation(key)
   stickBottom = true
   nextTick(scrollToBottom)
   if (window.innerWidth <= 860) sidebarClosed.value = true
+}
+async function handleRemove(key: string) {
+  if (!window.confirm('确定删除该会话及其全部消息？删除后不可恢复。')) return
+  try {
+    await removeConversation(key)
+  } catch (err) {
+    // ToastCard 文案固定为「功能暂未开放」，不适用于错误提示，这里用原生 alert
+    window.alert(err instanceof Error ? err.message : '删除失败，请稍后重试')
+  }
 }
 function handleNewChat() {
   startNew()
@@ -148,9 +165,11 @@ onUnmounted(() => {
       :conversations="conversations"
       :active-key="activeConversation?.key ?? null"
       :closed="sidebarClosed"
+      :busy="streaming"
       @toggle="sidebarClosed = !sidebarClosed"
       @new-chat="handleNewChat"
       @open="handleOpen"
+      @remove="handleRemove"
     />
 
     <main class="main">

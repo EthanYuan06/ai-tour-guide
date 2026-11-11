@@ -37,3 +37,6 @@ build/
 
 ### 临时测试截图（定期清理） ###
 /src/main/resources/static/test-screenshots/
+
+### 临时验证产物（定期清理） ###
+/tmp/

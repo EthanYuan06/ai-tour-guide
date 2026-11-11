@@ -30,6 +30,7 @@
         <java.version>21</java.version>
         <hutool.version>5.8.48</hutool.version>
         <knife4j.version>4.5.0</knife4j.version>
+        <mybatis-flex.version>1.11.7</mybatis-flex.version>
         <spring-ai.version>1.1.2</spring-ai.version>
     </properties>
     <dependencies>
@@ -77,6 +78,12 @@
             <artifactId>hutool-all</artifactId>
             <version>${hutool.version}</version>
         </dependency>
+        <!-- MyBatis-Flex：会话查询/删除及后续登录模块的持久层框架（Spring Boot 3.x 专用 starter） -->
+        <dependency>
+            <groupId>com.mybatis-flex</groupId>
+            <artifactId>mybatis-flex-spring-boot3-starter</artifactId>
+            <version>${mybatis-flex.version}</version>
+        </dependency>
         <!-- Knife4j 基于 OpenAPI3 的接口文档增强（jakarta 版，适配 Spring Boot 3+） -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
@@ -112,6 +119,11 @@
                                     <groupId>org.projectlombok</groupId>
                                     <artifactId>lombok</artifactId>
                                 </path>
+                                <path>
+                                    <groupId>com.mybatis-flex</groupId>
+                                    <artifactId>mybatis-flex-processor</artifactId>
+                                    <version>${mybatis-flex.version}</version>
+                                </path>
                             </annotationProcessorPaths>
                         </configuration>
                     </execution>
@@ -126,6 +138,11 @@
                                 <path>
                                     <groupId>org.projectlombok</groupId>
                                     <artifactId>lombok</artifactId>
+                                </path>
+                                <path>
+                                    <groupId>com.mybatis-flex</groupId>
+                                    <artifactId>mybatis-flex-processor</artifactId>
+                                    <version>${mybatis-flex.version}</version>
                                 </path>
                             </annotationProcessorPaths>
                         </configuration>
