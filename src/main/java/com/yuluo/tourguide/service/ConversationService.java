@@ -24,7 +24,6 @@ import static com.yuluo.tourguide.model.entity.table.ChatMemoryEntityTableDef.CH
 
 /**
  * 会话记忆服务
- * 查询与删除走 MyBatis-Flex；对话记忆写入仍由官方 JdbcChatMemoryRepository 负责
  */
 @Slf4j
 @Service

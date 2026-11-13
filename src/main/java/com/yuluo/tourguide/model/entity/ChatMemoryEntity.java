@@ -7,9 +7,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 对话记忆表实体，映射 Spring AI 自动建表的 SPRING_AI_CHAT_MEMORY
- * 仅用于 MyBatis-Flex 的条件查询与删除；写入仍由官方 JdbcChatMemoryRepository 负责
- * 该表无单列主键，故不声明 @Id
+ * 对话记忆表实体类
  */
 @Data
 @Table("SPRING_AI_CHAT_MEMORY")

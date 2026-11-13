@@ -1,0 +1,16 @@
+# 构建上下文裁剪：只保留后端构建所需文件
+.env
+.git
+.gitattributes
+.idea
+*.iml
+docs
+target
+tmp
+# 前端是独立构建上下文（compose 里 context: ./ai-tour-guide-frontend），排除后可省数百 MB 传输
+ai-tour-guide-frontend
+# 部署文件本身无需进后端镜像
+docker-compose.yml
+deploy.sh
+Dockerfile
+.dockerignore

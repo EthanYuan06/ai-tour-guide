@@ -1,0 +1,2 @@
+# Shell 脚本强制 LF 换行，避免 Windows 检出 CRLF 导致服务器执行报 bad interpreter
+*.sh text eol=lf

@@ -1,0 +1,81 @@
+name: ai-tour-guide
+
+services:
+  mysql:
+    # 默认 mysql:8.4（LTS）；变量仅为本地验证等场景留的覆盖口，服务器上无需设置
+    image: ${MYSQL_IMAGE:-mysql:8.4}
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      # 库名必须与 application.yml JDBC URL 严格一致且为小写（Linux 下 MySQL 标识符大小写敏感）
+      MYSQL_DATABASE: ai_tour_guide
+      TZ: Asia/Shanghai
+    # 128M buffer pool + 关 performance-schema，适配 2G 内存小机
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --performance-schema=off
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # $$ 是 compose 转义，运行期由容器内 shell 展开 MYSQL_ROOT_PASSWORD
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks: [appnet]
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        RUNTIME_IMAGE: ${BACKEND_RUNTIME_IMAGE:-eclipse-temurin:21-jre-alpine}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # 整条覆盖 application.yml 里硬编码的 localhost 数据源，三个查询参数一个都不能丢
+      # （allowPublicKeyRetrieval 是 MySQL 8 caching_sha2_password 非 SSL 连接的前提）
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/ai_tour_guide?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+      MYSQL_USERNAME: ${MYSQL_USERNAME}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+      # 堆上限约为容器可见内存的 55%，OOM 时退出交由 restart 策略拉起而非僵死
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=55.0 -XX:+ExitOnOutOfMemoryError"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # 仅回环调试口，公网不可达；应急排查用 curl 127.0.0.1:18123/api/health
+    ports:
+      - "127.0.0.1:18123:8123"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/api/health | grep -q ok"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ./ai-tour-guide-frontend
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${FRONTEND_NODE_IMAGE:-node:22-alpine}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    # 宝塔网站反向代理的目标地址：http://127.0.0.1:18080
+    ports:
+      - "127.0.0.1:18080:80"
+    networks: [appnet]
+
+volumes:
+  mysql_data:
+
+networks:
+  appnet:
+    driver: bridge
