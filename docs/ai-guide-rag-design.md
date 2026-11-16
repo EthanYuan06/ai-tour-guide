@@ -15,7 +15,9 @@
 
 ### 2.1 向量库：PostgreSQL + pgvector
 
-单库同时承载文档正文与向量，支持精确 / 近似最近邻检索，Spring AI 提供 `PgVectorStore` 自动装配。项目 `pom.xml` 已含 `postgresql` 驱动，仅需补 store starter。业务数据仍在 MySQL，向量库独立于主库，职责清晰。
+单库同时承载文档正文与向量，支持精确 / 近似最近邻检索，Spring AI 提供 `PgVectorStore` 自动装配。项目 `pom.xml` 已含 `postgresql` 驱动，仅需补 store starter。
+
+> 落地调整（2026-11-16）：pgvector 的自动装配只绑定 `spring.datasource` 这一个数据源，为免双库装配偏离框架默认，应用数据源已**整体切到云 PostgreSQL**（本地 MySQL 弃用，驱动保留作回退），对话记忆表与向量表同库同源；MySQL 历史会话数据不迁移。
 
 ### 2.2 RAG 形态：Agentic RAG
 
@@ -75,31 +77,40 @@ graph TD
 
 ## 四、迭代阶段
 
+> 完成度标记（更新于 2026-11-16）：✅ 已完成并实测通过 ｜ ⏳ 部分完成 ｜ ⬜ 未开始。
+
 ### 阶段一：离线索引与调试
 
-| 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
-|---|---|---|---|---|
-| 知识文档生成 | 用 AI 生成旅游相关知识文档（景点 / 路线 / 政策等） | 知识语料 | 覆盖典型导游问答场景 | 无 |
-| 离线调参 | 在百炼知识库做 ETL 测试，调切分规则、相似度阈值、top-k（**仅作参考**） | 调参记录 | 得出一组可迁移到本地的参数 | 知识文档 |
-| 环境准备 | 安装 PostgreSQL 并启用 pgvector 扩展 | 本地向量库 | 连接可用，扩展已加载 | 无 |
-| 本地索引 | 用 Spring AI `DocumentReader`/`TextSplitter`/`EmbeddingModel` 跑通 ETL → 向量化 → 写入 `PgVectorStore` | 索引管线 | 文档入库，可按向量检索到切片 | 环境准备 |
+| 状态 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
+|---|---|---|---|---|---|
+| ✅ | 知识文档生成 | 用 AI 生成旅游相关知识文档（景点 / 路线 / 政策等） | 知识语料 | 覆盖典型导游问答场景 | 无 |
+| ⏳ | 离线调参 | 在百炼知识库做 ETL 测试，调切分规则、相似度阈值、top-k（**仅作参考**） | 调参记录 | 得出一组可迁移到本地的参数 | 知识文档 |
+| ✅ | 环境准备 | 准备 PostgreSQL 实例并启用 pgvector 扩展 | 向量库环境 | 连接可用，扩展已加载 | 无 |
+| ⬜ | 本地索引 | 用 Spring AI `DocumentReader`/`TextSplitter`/`EmbeddingModel` 跑通 ETL → 向量化 → 写入 `PgVectorStore` | 索引管线 | 文档入库，可按向量检索到切片 | 环境准备 |
+
+阶段一已完成部分的实际落地情况：
+
+- **知识文档**：`docs/rag/` 共 8 篇、78 个条目（交通 17 / 体验关西 12 / 体验关东 11 / 餐饮购物娱乐 10 / 住宿与城际 9 / 注意事项 8 / 证件与换汇 6 / 签证 5），条目自带 `【类别｜…】` 元数据头。
+- **环境准备（与原计划的差异）**：不用本地安装，改用**阿里云百炼开通的云 PostgreSQL 18.6**；`vector`、`hstore`、`uuid-ossp` 三个扩展均已就绪，公网地址连通。应用 `spring.datasource` 整体切到该库（弃用本地 MySQL），使 Spring AI 的 `JdbcChatMemoryRepository` 与 `PgVectorStore` 共用同一个数据源，从根上消掉多数据源装配。启动实测已自动建出两张表：`spring_ai_chat_memory`、`vector_store(embedding vector(1024))` + HNSW 索引 `spring_ai_vector_index`；对话链路在新库上回归通过。
+- **离线调参**：切分规则已定（按 `(?=【)` 条目边界切、块长 800、重叠 0），但**相似度阈值与 top-k 尚未测**——需要本地入库完成后才能跑召回，属阶段一收尾项。
+- **本地索引**：ETL 管线未实施，留下一轮。
 
 ### 阶段二：RAG 快速验证
 
-| 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
-|---|---|---|---|---|
-| QuestionAnswerAdvisor 验证 | 挂 `QuestionAnswerAdvisor` 到 `ChatClient`，用阶段一参数验证本地检索效果 | 可运行的 Naive RAG | 知识类问题能召回并体现库内内容 | 阶段一 |
+| 状态 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
+|---|---|---|---|---|---|
+| ⬜ | QuestionAnswerAdvisor 验证 | 挂 `QuestionAnswerAdvisor` 到 `ChatClient`，用阶段一参数验证本地检索效果 | 可运行的 Naive RAG | 知识类问题能召回并体现库内内容 | 阶段一 |
 
 > 该阶段仅验证可行性，黑盒不可编排，不作为最终形态、不写简历。
 
 ### 阶段三：RAG 链路编排与 Agentic 化
 
-| 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
-|---|---|---|---|---|
-| 复现 Naive RAG | 用 `RetrievalAugmentationAdvisor` 四模块复现基线链路 | 可编排 RAG 管线 | 端到端效果不低于阶段二 | 阶段二 |
-| 检索增强 | 加 `RewriteQueryTransformer` / `MultiQueryExpander`；自研 `DocumentPostProcessor` 实现 rerank、MMR | 增强管线 | 多轮 / 模糊问题召回质量提升，来源可标注 | 基线管线 |
-| Agentic 化 | 将整条检索管线封装为 `@Tool`，由模型按需调用 | Agentic RAG | 知识类问题触发检索，闲聊类不触发 | 增强管线 |
-| 阶段验收 | 多轮对话端到端演练 | 验收记录 | 模型自主决定是否检索并正确展示私有知识 | 以上全部 |
+| 状态 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
+|---|---|---|---|---|---|
+| ⬜ | 复现 Naive RAG | 用 `RetrievalAugmentationAdvisor` 四模块复现基线链路 | 可编排 RAG 管线 | 端到端效果不低于阶段二 | 阶段二 |
+| ⬜ | 检索增强 | 加 `RewriteQueryTransformer` / `MultiQueryExpander`；自研 `DocumentPostProcessor` 实现 rerank、MMR | 增强管线 | 多轮 / 模糊问题召回质量提升，来源可标注 | 基线管线 |
+| ⬜ | Agentic 化 | 将整条检索管线封装为 `@Tool`，由模型按需调用 | Agentic RAG | 知识类问题触发检索，闲聊类不触发 | 增强管线 |
+| ⬜ | 阶段验收 | 多轮对话端到端演练 | 验收记录 | 模型自主决定是否检索并正确展示私有知识 | 以上全部 |
 
 ## 五、最终效果
 
@@ -109,28 +120,30 @@ graph TD
 
 **pom.xml 新增：**
 
-- `spring-ai-starter-vector-store-pgvector`：`PgVectorStore` 自动装配。
-- `spring-ai-rag`：`RetrievalAugmentationAdvisor` 及四模块。
-- `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`。
+- ✅ `spring-ai-starter-vector-store-pgvector`：`PgVectorStore` 自动装配（1.1.2 已落地，依赖树含 `spring-ai-pgvector-store` 与 `com.pgvector:pgvector:0.1.6`）。
+- ⬜ `spring-ai-rag`：`RetrievalAugmentationAdvisor` 及四模块。
+- ⬜ `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`。
 
 **application.yml / .env：**
 
-- pgvector 数据源（独立于 MySQL 主库），`spring.ai.vectorstore.pgvector.initialize-schema: true` 幂等建表。
-- Embedding 走 DashScope OpenAI 兼容 `text-embedding-v4`，增配 `spring.ai.openai.embedding.*`（base-url / api-key / model），密钥经 `.env` 注入不入库。
-- 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。
+- ✅ 数据源单库 PostgreSQL：`spring.datasource` 的 url / username / password 写作 `${PG_URL}` / `${PG_USERNAME}` / `${PG_PASSWORD}`，真实值放 `.env`（已 gitignore，不入库）；对话记忆表与向量表同库同源，不再有「pgvector 独立于主库」的双数据源问题。
+- ✅ `spring.ai.vectorstore.pgvector.initialize-schema: true` 幂等建表（建表脚本依赖的 `vector` / `hstore` / `uuid-ossp` 已在实例装好），`index-type: HNSW`、`distance-type: COSINE_DISTANCE`、`dimensions: 1024`。
+- ✅ Embedding 走 DashScope OpenAI 兼容模式：`spring.ai.model.embedding: openai` + `spring.ai.openai.embedding.options.{model, dimensions}`。**模型定为 `qwen3.7-text-embedding-flash`、维度 1024**（原文档写的 `text-embedding-v4` / 1536 已作废：flash 只支持 1024/768/512/256）；`dimensions` 与 `vectorstore.pgvector.dimensions` 必须一致，否则入库报 `22000 vector type mismatch`。
+- ⬜ 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。
 
 **代码落点：**
 
-- `ChatAiConfig` 后续挂 advisor / 注册检索 `@Tool`；检索管线封装在独立 service，保持分层与单一职责。
+- ⬜ `ChatAiConfig` 后续挂 advisor / 注册检索 `@Tool`；检索管线封装在独立 service，保持分层与单一职责。
+- ✅ 切 PG 已改的方言点：`ConversationService` 会话列表的 epoch 取值改为 `CAST(FLOOR(EXTRACT(EPOCH FROM MIN("timestamp" AT TIME ZONE 'Asia/Shanghai'))) AS BIGINT)`；`ChatMemoryEntity` 的 `@Table` 改小写 `spring_ai_chat_memory`。
 
-> 本文档只描述方案，pom 与 yml 的实际改动在对应开发阶段执行。
+> 本文档描述方案，pom 与 yml 的实际改动在对应开发阶段执行；上面带 ✅ 的条目表示已落地并实测通过。
 
 ## 七、遵循阿里 Java 手册
 
 - **命名与常量**：类 / 方法 / 变量遵循驼峰与语义化命名，检索参数阈值等以常量或配置项集中管理，禁止魔法值散落。
 - **集合与并发**：召回结果处理优先 `Stream` / 不可变集合；工具调用与检索管线若并发执行，共享状态需线程安全，避免可变全局态。
 - **异常与日志**：向量库 / embedding 调用失败需捕获并降级（无检索时保留基础回答能力），异常不吞不裸抛；日志分级，检索命中、token 消耗按 `info`/`debug` 区分，避免全文进 `info` 日志。
-- **MySQL / ORM 规约**：pgvector 与 MySQL 数据源隔离，建表脚本幂等（`IF NOT EXISTS`），字段与索引命名规范统一。
+- **数据库 / ORM 规约**：对话记忆与向量表统一落在 PostgreSQL 单库，建表脚本幂等（`IF NOT EXISTS`），字段与索引命名规范统一。切库带来两条 PG 侧硬约束：MyBatis-Flex 在 PG 方言下给标识符加双引号，实体表名必须小写；`timestamp without time zone` 列取 epoch 前要先 `AT TIME ZONE` 声明时区，否则时间戳会偏 8 小时。
 
 ## 八、企业常见开发规范
 

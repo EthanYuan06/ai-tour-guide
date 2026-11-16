@@ -5,10 +5,9 @@ spring:
     # 把项目根目录的 .env 当作 properties 文件导入（KEY=VALUE、# 注释），文件不存在时不报错
     import: optional:file:./.env[.properties]
   datasource:
-    # 对话记忆持久化存储；allowPublicKeyRetrieval 适配 MySQL 8 caching_sha2_password 本地非 SSL 连接
-    url: jdbc:mysql://localhost:3306/ai_tour_guide?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-    username: ${MYSQL_USERNAME}
-    password: ${MYSQL_PASSWORD}
+    url: ${PG_URL}
+    username: ${PG_USERNAME}
+    password: ${PG_PASSWORD}
   mvc:
     async:
       # 流式对话运行在 MVC 异步模式，容器默认 30s 空闲切断长回复
@@ -18,29 +17,37 @@ spring:
       memory:
         repository:
           jdbc:
-            # 启动时执行 jar 内置 schema-mysql.sql 自动建表（CREATE TABLE IF NOT EXISTS，幂等）
+            # 启动时执行 jar 内置 schema-postgresql.sql 自动建表（CREATE TABLE IF NOT EXISTS，幂等）
             initialize-schema: always
     retry:
-      # 默认 max-attempts=10 且指数退避，同步接口异常时会长时间挂起，收敛为 3 次
       max-attempts: 3
     model:
-      # 显式开启 OpenAI 兼容协议下的 Chat 自动装配
       chat: openai
+      embedding: openai
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        dimensions: 1024
+        distance-type: COSINE_DISTANCE
+        max-document-batch-size: 10000
+        initialize-schema: true
     openai:
       base-url: https://dashscope.aliyuncs.com/compatible-mode
       api-key: ${DASHSCOPE_API_KEY}
       chat:
         options:
           model: ${AI_TOUR_GUIDE_CHAT_MODEL:deepseek-v4.1-flash}
-          # 调试后得出的回复语气最佳温度
           temperature: 0.75
-          # 长行程容易被截断，放大输出上限
           max-tokens: 6000
           # 开启流式输出回传 usage，方便统计 token 消耗
           stream-usage: true
           # 百炼 DeepSeek 系列默认开思考模式，同步接口需关闭以控制延迟与成本
           extra-body:
             "[enable_thinking]": false
+      embedding:
+        options:
+          model: qwen3.7-text-embedding-flash
+          dimensions: 1024
 server:
   port: 8123
   servlet:

@@ -33,6 +33,15 @@ public class ConversationService {
     private ChatMemoryMapper chatMemoryMapper;
 
     /**
+     * 会话创建时间的取值 SQL：PostgreSQL 方言，取该会话最早一条消息的 epoch 秒并取整为 bigint。
+     * timestamp 列是无时区的东八区墙上时间，先 AT TIME ZONE 声明时区再取 epoch，否则 epoch 会多算 8 小时；
+     * 回 MySQL 需换回 UNIX_TIMESTAMP(MIN(`timestamp`))
+     */
+    private static final String CREATED_AT_EPOCH_SQL =
+            "CAST(FLOOR(EXTRACT(EPOCH FROM MIN(\"timestamp\" AT TIME ZONE '"
+                    + ConversationConstants.TIMESTAMP_ZONE + "'))) AS BIGINT)";
+
+    /**
      * 查询会话列表，按创建时间倒序
      * 两步查询：先聚合出会话摘要（条数、创建时间），再批量取每会话首条用户消息作标题，避免相关子查询
      * 空表返回空集合而非 null；条数受 LIST_LIMIT 约束
@@ -43,8 +52,8 @@ public class ConversationService {
         QueryWrapper summaryQuery = QueryWrapper.create()
                 .select(CHAT_MEMORY_ENTITY.CONVERSATION_ID.as("conversationId"),
                         count(CHAT_MEMORY_ENTITY.CONVERSATION_ID).as("messageCount"),
-                        // timestamp 列为 TIMESTAMP 类型，用 UNIX_TIMESTAMP 转为 epoch 秒再映射 Long
-                        column("UNIX_TIMESTAMP(MIN(`timestamp`))").as("createdAt"))
+                        // epoch 秒取值见 CREATED_AT_EPOCH_SQL：按 PostgreSQL 方言，勿改回 MySQL 写法
+                        column(CREATED_AT_EPOCH_SQL).as("createdAt"))
                 .from(CHAT_MEMORY_ENTITY)
                 .groupBy(CHAT_MEMORY_ENTITY.CONVERSATION_ID)
                 .orderBy(min(CHAT_MEMORY_ENTITY.TIMESTAMP).desc())
@@ -59,7 +68,7 @@ public class ConversationService {
         Map<String, String> firstUserMessages = queryFirstUserMessages(ids);
         for (ConversationSummary summary : summaries) {
             summary.setTitle(buildTitle(firstUserMessages.get(summary.getConversationId())));
-            // UNIX_TIMESTAMP 返回 epoch 秒，前端按毫秒解析，统一换算
+            // PostgreSQL 的 EXTRACT(EPOCH ...) 返回 epoch 秒，前端按毫秒解析，统一换算
             summary.setCreatedAt(summary.getCreatedAt() * 1000);
         }
         return summaries;

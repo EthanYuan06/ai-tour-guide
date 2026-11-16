@@ -26,6 +26,13 @@ public final class ConversationConstants {
      */
     public static final int LIST_LIMIT = 200;
 
+    /**
+     * 记忆表 timestamp 列写入的是无时区的本地墙上时间（JVM 与数据库均为东八区），
+     * PostgreSQL 的 EXTRACT(EPOCH FROM timestamp) 会把该值按 UTC 解析、导致 epoch 多算 8 小时，
+     * 故取 epoch 前需用此 zone 通过 AT TIME ZONE 显式声明时区，保持与前端毫秒契约一致
+     */
+    public static final String TIMESTAMP_ZONE = "Asia/Shanghai";
+
     private ConversationConstants() {
     }
 }
