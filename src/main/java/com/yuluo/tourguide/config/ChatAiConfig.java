@@ -16,7 +16,7 @@ import org.springframework.core.io.ClassPathResource;
 
 /**
  * AI 对话相关装配：系统提示词模板、ChatMemory 与 ChatClient
- * 对话记忆基于 JDBC Repository 持久化到 MySQL，重启后会话历史可恢复
+ * 对话记忆基于 JDBC Repository 持久化到 PostgreSQL，重启后会话历史可恢复
  */
 @Configuration
 public class ChatAiConfig {
@@ -53,7 +53,7 @@ public class ChatAiConfig {
     }
 
     /**
-     * 对话记忆：滑动窗口策略 + MySQL 持久化存储（官方文档的显式装配写法）
+     * 对话记忆：滑动窗口策略 + PostgreSQL 持久化存储（官方文档的显式装配写法）
      *
      * @param chatMemoryRepository JDBC 记忆存储库
      */
@@ -84,7 +84,7 @@ public class ChatAiConfig {
     /**
      * 智能导游对话客户端，挂载会话记忆、日志与 RAG 检索 Advisor
      *
-     * @param chatMemory            基于 MySQL 持久化的对话记忆
+     * @param chatMemory            基于 PostgreSQL 持久化的对话记忆
      * @param myLoggerAdvisor       自定义日志 Advisor，仅观测不改写请求/响应
      * @param questionAnswerAdvisor 在线 RAG Advisor，默认 order=0，在日志 Advisor 之前改写用户消息；
      *                             勿设为 Integer.MAX_VALUE，会与链尾模型 Advisor 同序而被跳过

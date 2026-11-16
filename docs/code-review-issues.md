@@ -23,7 +23,7 @@
 - [ ] `GlobalExceptionHandler.handleSseError` 残留 `/chat/gen/code` 路径判断：属其他项目复制残留，当前无 SSE 接口
 - [ ] `ChatRequest` 未使用 JSR-303 注解校验：依赖 app 层手动 `ThrowUtils` 校验，声明式校验更清晰
 - [ ] 请求体解析异常返回码语义不准：`HttpMessageNotReadableException` 落入通用 `RuntimeException` 分支返回 500，语义上更应映射为 400 参数错误
-- [ ] 会话累计 token 仍为单机内存态：进程重启即丢失、多实例不共享，现仅靠 TimedCache 按访问过期 2 小时缓解键空间增长（ChatMemory 已随 JDBC 改造持久化到 MySQL，此条仅指 token 累计器）
+- [ ] 会话累计 token 仍为单机内存态：进程重启即丢失、多实例不共享，现仅靠 TimedCache 按访问过期 2 小时缓解键空间增长（ChatMemory 已随 JDBC 改造持久化到云 PostgreSQL 单库，此条仅指 token 累计器）
 - [ ] `MyLoggerAdvisor.hasTokens` 仅判断 `totalTokens > 0`：若模型只回传 prompt / completion 而省略 total，聚合后 total 恒为 0，该轮真实 token 会被整轮丢弃并记为「未上报」（百炼当前会回传 `total_tokens`，属潜在缺口）。修复：三个字段任一 > 0 即视为有效
 - [ ] `MyLoggerAdvisor.after` 用 `String.valueOf(conversationId)` 作累计器 key：null 会退化为字符串 `"null"`，把所有匿名请求静默合并进同一计数桶。当前被 `before()` 的非空校验挡住，属防御性缺口
 - [ ] `adviseStream` 覆写保留了 `Mono.just` / `publishOn` / `onErrorResume` 等冗余编排：1.1.2 官方 `SimpleLoggerAdvisor` 仅需「记录请求 → `chain.nextStream` → `aggregateChatClientResponse`」三步，收敛后可同时解掉上面的异常包装问题

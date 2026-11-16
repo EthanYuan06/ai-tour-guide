@@ -10,14 +10,14 @@
 2. **ReAct Agent 工具调用**：基于 deepseek-chat 的 Agent 按“思考—行动—观察”循环工作；联网检索采用两级策略，先 Tavily 搜索拿到候选链接与摘要，信息不足时再用 Firecrawl 抓取目标页面全文。
 3. **MCP 工具与多智能体**：接入高德地图 MCP（已含天气查询能力），并在 Agent 路线上设计 Supervisor 多智能体架构，由 Supervisor 调度地图、天气、检索等子 Agent 并发工作。
 4. **全模式 RAG**：简单对话与 Agent 模式均具备知识库检索增强能力，检索按需触发（涉及景点/路线/政策等知识性问题时才执行向量检索），RAG 作为两种模式的公共基础能力。
-5. **用户体系**：基于 MySQL 的登录模块，提供注册/登录能力，会话与业务数据按用户隔离。
+5. **用户体系**：基于云 PostgreSQL 单库的登录模块，提供注册/登录能力，会话与业务数据按用户隔离。
 
 ### 1.2 架构分层（文字描述）
 
 - **接入层**：Vue3 + Vite 构建的响应式 Web 界面，负责对话交互、流式渲染与行程展示。
 - **应用层**：Spring Boot 承载 ChatClient、复杂度路由、RAG 检索、ReAct Agent、Supervisor 编排与记忆管理。
-- **能力与数据层**：DashScope 大模型、Tavily/Firecrawl 联网 API、高德 MCP 服务，以及 MySQL、PostgreSQL（pgvector）、Redis 三类存储。
-- **调用关系**：前端请求应用层（阶段二起经登录鉴权）；路由节点决定直连或 Agent；两条链路按需触发 RAG 检索；Agent 通过 MCP Client 与联网工具完成任务；对话记忆已从内存实现切换为 Spring AI 内置 JdbcChatMemoryRepository + MySQL 持久化（原 SAA RedisChatMemory 方案暂缓），业务数据存 MySQL。
+- **能力与数据层**：DashScope 大模型、Tavily/Firecrawl 联网 API、高德 MCP 服务，存储侧为**云 PostgreSQL 单库**（pgvector 扩展，同时承载对话记忆表、向量表与业务数据）；Redis 作高并发缓存备选、暂未引入；MySQL 驱动保留仅作回退能力，当前 `spring.datasource` 不指向它。
+- **调用关系**：前端请求应用层（阶段二起经登录鉴权）；路由节点决定直连或 Agent；两条链路按需触发 RAG 检索；Agent 通过 MCP Client 与联网工具完成任务；对话记忆已从内存实现切换为 Spring AI 内置 JdbcChatMemoryRepository + PostgreSQL 持久化（原 SAA RedisChatMemory 方案暂缓），业务数据与记忆表、向量表同库同源。
 
 ### 1.3 目标架构流程图
 
@@ -122,15 +122,15 @@ graph TD
 
 | 存储 | 职责 | 引入阶段 | 选型理由 |
 |---|---|---|---|
-| MySQL | 业务数据持久化 + 对话记忆（JdbcChatMemoryRepository） | 对话记忆已落地；业务数据阶段二（登录模块起） | 关系型主库，承载用户、行程等业务数据；记忆落库后重启可恢复 |
-| PostgreSQL + pgvector | RAG 知识库向量存储与相似检索 | 阶段二 | 单库同时承载文档与向量，支持精确/近似最近邻，Spring AI 提供 PGvector VectorStore |
-| Redis | 对话记忆高速缓存（备选，暂缓） | 待定 | 原阶段二方案为 SAA RedisChatMemory，现改为 MySQL JDBC 方案先行；后续若有高并发读压力再评估引入 |
+| 云 PostgreSQL（单库） | 一库三用：对话记忆表 `spring_ai_chat_memory`（JdbcChatMemoryRepository）、向量表 `vector_store`（pgvector）、业务数据表（用户、行程等，阶段二登录模块起） | 记忆与向量已落地并实测；业务数据待登录模块 | 阿里云百炼随服务开通的 PostgreSQL 18.6，`vector`/`hstore`/`uuid-ossp` 扩展就绪。单库使 Spring AI 的 pgvector 与 JDBC 记忆自动装配共用 `spring.datasource`，从根上消掉多数据源装配；用户与会话归属可同库 join、同一事务校验 |
+| Redis | 对话记忆高速缓存（备选，未引入） | 待定 | 原阶段二方案为 SAA RedisChatMemory，现以 JDBC 方案先行；后续若有高并发读压力再评估引入 |
+| MySQL | 已弃用，仅保留驱动作回退能力 | — | 迁库前为业务主库；当前 `spring.datasource` 指向 PostgreSQL，`mysql-connector-j` 依赖保留但不生效，MySQL 历史会话数据不迁移 |
 
-说明：对话记忆已随本次改造落地 MySQL（Spring AI 官方 JdbcChatMemoryRepository，启动自动建表）；其余存储按「登录模块 → 知识库建设 → 向量检索 → RAG 全链路」的优先级推进，RAG 初期可先用轻量内存向量存储跑通，再迁移到 pgvector。
+说明：对话记忆与向量存储已随迁库改造落地到云 PostgreSQL（Spring AI 官方 JdbcChatMemoryRepository + pgvector starter，启动各自自动建表）；业务数据按同一口径落该库，按「登录模块 → 知识库建设 → 向量检索 → RAG 全链路」的优先级推进。登录模块落地前需注意两条：PG 方言下 MyBatis-Flex 会给标识符加双引号，**业务表名与列名必须小写**；该实例走公网地址访问，落真实用户凭据前需**收紧实例白名单**，密码一律 BCrypt 加盐哈希存储。
 
 ### 2.4 记忆实现方式：直接使用框架组件
 
-不自行实现记忆序列化，直接使用 Spring AI 内置的记忆组件：MVP 用内存实现，现已切换为 JdbcChatMemoryRepository + MySQL（`spring-ai-starter-model-chat-memory-repository-jdbc`，显式装配 MessageWindowChatMemory，窗口 20）。原因是通用 JSON 序列化与 Spring AI 的 Message 接口不兼容，手写消息转换与序列化逻辑成本高且易出错；框架组件已封装存储格式与读写流程，开箱即用。已知边界：JDBC Repository 不支持工具调用消息的持久化，阶段三引入 Agent 工具调用时需重新评估。
+不自行实现记忆序列化，直接使用 Spring AI 内置的记忆组件：MVP 用内存实现，现已切换为 JdbcChatMemoryRepository + PostgreSQL（`spring-ai-starter-model-chat-memory-repository-jdbc`，显式装配 MessageWindowChatMemory，窗口 20）。原因是通用 JSON 序列化与 Spring AI 的 Message 接口不兼容，手写消息转换与序列化逻辑成本高且易出错；框架组件已封装存储格式与读写流程，开箱即用。已知边界：JDBC Repository 不支持工具调用消息的持久化，阶段三引入 Agent 工具调用时需重新评估。
 
 ### 2.5 联网检索与 MCP 接入
 
@@ -158,7 +158,7 @@ graph TD
 1. **环境与账号准备**：安装 JDK 17+、Node.js 与 Git；申请 DashScope、Tavily、Firecrawl、高德开放平台 Key 并验证可用性。
 2. **工程骨架**：后端用 Spring Initializr 搭建 Boot 3.5.x 工程并引入 SAA BOM；前端用 Vite 创建 Vue3 工程；约定前后端接口规范与目录结构。
 3. **阶段一 MVP 开发**：完成 ChatClient 接入、系统提示词、内存会话、流式输出与对话界面，按验收门禁通过后再进入下一阶段。
-4. **阶段二 登录与持久化 + RAG**：按优先级依次开发登录模块（MySQL）、知识库建设（从内存到 PGVector）、向量检索（先内存跑通再迁移 PGVector）、RAG 全链路搭建（按需触发）。会话记忆持久化已提前以 JdbcChatMemoryRepository + MySQL 落地。
+4. **阶段二 登录与持久化 + RAG**：按优先级依次开发登录模块（云 PostgreSQL 单库）、知识库建设、向量检索与 RAG 全链路搭建（按需触发）。会话记忆持久化已提前以 JdbcChatMemoryRepository + PostgreSQL 落地；知识库建设、向量检索与 RAG 黑盒验证已在单库 pgvector 上直接完成（未走「先内存跑通再迁移」的中间形态，见《RAG 开发文档》阶段一、二）。
 5. **阶段三 Agent 与联网**：实现复杂度路由与 ReAct Agent，接入 Tavily/Firecrawl，补齐工具调用日志与失败处理。
 6. **阶段四 MCP 与多智能体**：接入高德 MCP，将单 Agent 演进为 Supervisor 架构并验证子 Agent 并发，接入可观测能力。
 7. **阶段验收门禁**：每阶段完成后对照 Task 表验收，未通过不进入下一阶段；问题记录到风险清单并优先修复。
@@ -181,15 +181,15 @@ graph TD
 
 ### 阶段二：登录模块 + RAG 与持久化
 
-> 开发优先级（从高到低）：登录模块 → 知识库建设（从内存到 PGVector）→ 向量检索（先在内存跑通、再迁移至 PGVector）→ RAG 全链路搭建（按需触发、查询增强、向量检索、返回）。会话记忆持久化已提前完成（JdbcChatMemoryRepository + MySQL）。
+> 开发优先级（从高到低）：登录模块 → 知识库建设 → 向量检索 → RAG 全链路搭建（按需触发、查询增强、向量检索、返回）。会话记忆持久化已提前完成（JdbcChatMemoryRepository + PostgreSQL）；知识库、向量检索与 RAG 黑盒验证已落地，均直接落在云 PG 单库的 pgvector 上，未走「先内存向量存储跑通再迁移」的中间形态。
 
 | 优先级 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
 |---|---|---|---|---|---|
-| 1 | 登录模块 | 基于 MySQL 的用户注册/登录，密码加密存储与登录态校验 | 认证接口与用户表 | 注册/登录可调通，密码不明文存储，未认证请求可被拦截 | MVP 验收 |
-| 2 | 会话记忆持久化（已完成） | 用 Spring AI 内置 JdbcChatMemoryRepository 替换内存实现，会话记忆写入 MySQL（原 Redis 方案暂缓） | JDBC 记忆配置 | 会话记忆可写入并读取，重启服务后历史可恢复 | 登录模块 |
-| 3 | 知识库建设 | 旅游文档收集、清洗、切分与向量化，存储从内存演进到 PGVector | 知识文档与索引 | 文档可被检索，切分无明显断句问题 | 登录模块 |
-| 4 | 向量检索 | 先用内存向量存储跑通检索链路，再迁移至 PGVector | VectorStore 配置 | 相似问题能召回相关片段并注入上下文 | 知识库 |
-| 5 | RAG 全链路 | 按需触发：判定需要知识检索时执行查询增强、向量检索并返回结果 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发，来源可标注 | 向量检索 |
+| 1 | 登录模块 | 基于云 PostgreSQL 单库的用户注册/登录，密码 BCrypt 加盐哈希存储与登录态校验；建表注意 PG 标识符小写约束，上线前收紧实例公网白名单 | 认证接口与用户表 | 注册/登录可调通，密码不明文存储，未认证请求可被拦截 | MVP 验收 |
+| 2 | 会话记忆持久化（已完成） | 用 Spring AI 内置 JdbcChatMemoryRepository 替换内存实现，会话记忆写入 PostgreSQL `spring_ai_chat_memory`（原 Redis 方案暂缓） | JDBC 记忆配置 | 会话记忆可写入并读取，重启服务后历史可恢复 | 登录模块 |
+| 3 | 知识库建设（已完成） | 旅游文档收集、清洗、切分与向量化，直接落 pgvector（`vector_store`，1024 维 COSINE + HNSW） | 知识文档与索引 | 文档可被检索，切分无明显断句问题 | 登录模块 |
+| 4 | 向量检索（已完成） | `PgVectorStore` 自动装配单库数据源，相似度检索召回切片 | VectorStore 配置 | 相似问题能召回相关片段并注入上下文 | 知识库 |
+| 5 | RAG 全链路（部分完成） | 黑盒验证已由 `QuestionAnswerAdvisor` 完成（阈值 0.3 / topK 5，混合式模板）；按需触发与查询增强待阶段三编排 + `@Tool` 化 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发，来源可标注 | 向量检索 |
 
 ### 阶段三：ReAct Agent + 联网
 
@@ -226,7 +226,7 @@ graph TD
 | Spring Boot 4 无 SAA 适配 | 强行升级导致自动装配/依赖冲突 | 主线锁定 Boot 3.5.x，跟踪官方兼容表，适配后再迁移 |
 | Agent 工具失败或循环 | 任务卡死、回复异常 | 设置超时、最大迭代次数与重试，失败降级为直连回答 |
 | 外部 API 成本与配额 | 调用费用超预期、限流 | 默认只调 Tavily，Firecrawl 按需触发；控制上下文长度与频次 |
-| 记忆存储可用性 | MySQL 不可用导致记忆读写失败 | 本机开发依赖 MySQL 服务常驻；连接失败时接口报错可观测，后续可评估降级或缓存策略 |
+| 记忆与数据单库可用性 | 云 PostgreSQL 单库同时承载记忆表、向量表与业务数据，实例不可用会同时打挂对话记忆、RAG 检索与登录 | 连接失败时接口报错可观测；实例走公网访问，需收紧白名单并核对配额；高并发读压力出现时再评估 Redis 缓存备选 |
 | MCP 外部服务可用性 | 地图/天气工具不可用 | 捕获异常并提示，保留无工具的基础回答能力 |
 | 登录认证设计不当 | 越权访问、密码泄露 | 密码单向加密存储，Token 过期与接口鉴权统一在过滤层处理 |
 

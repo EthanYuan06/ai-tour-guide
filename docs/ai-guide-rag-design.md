@@ -90,18 +90,26 @@ graph TD
 
 阶段一已完成部分的实际落地情况：
 
-- **知识文档**：`docs/rag/` 共 8 篇、78 个条目（交通 17 / 体验关西 12 / 体验关东 11 / 餐饮购物娱乐 10 / 住宿与城际 9 / 注意事项 8 / 证件与换汇 6 / 签证 5），条目自带 `【类别｜…】` 元数据头。
+- **知识文档**：`docs/rag/` 共 8 篇、79 个条目（交通 18 / 体验关西 12 / 体验关东 11 / 餐饮购物娱乐 10 / 住宿与城际 9 / 注意事项 8 / 证件与换汇 6 / 签证 5），条目自带 `【类别｜…】` 元数据头。
 - **环境准备（与原计划的差异）**：不用本地安装，改用**阿里云百炼开通的云 PostgreSQL 18.6**；`vector`、`hstore`、`uuid-ossp` 三个扩展均已就绪，公网地址连通。应用 `spring.datasource` 整体切到该库（弃用本地 MySQL），使 Spring AI 的 `JdbcChatMemoryRepository` 与 `PgVectorStore` 共用同一个数据源，从根上消掉多数据源装配。启动实测已自动建出两张表：`spring_ai_chat_memory`、`vector_store(embedding vector(1024))` + HNSW 索引 `spring_ai_vector_index`；对话链路在新库上回归通过。
-- **离线调参**：切分规则已定（按 `(?=【)` 条目边界切、块长 800、重叠 0）并已落地实测；**相似度阈值与 top-k 尚未定稿**——冒烟召回已跑通（见下），正式调参属阶段一收尾项。
-- **本地索引（2026-11-16 落地）**：ETL 以通用工具类落在 `utils` 包——`RegexTextSplitter`（继承 `TextSplitter`，正则边界切分 + 800 字超长硬切兜底；框架无现成正则切分器，属自研）与 `DocumentEtlUtils`（`MarkdownDocumentReader` 读取 → 切分 → 元数据富化 → 按 source 先删后建写入 `VectorStore`）。每切片带 `source`（文件名）与 `category`（`【类别｜…】` 头首段）metadata。触发入口为手动测试 `RagEtlPipelineTest`（`-DragEtl=true` 门禁，普通 `mvn test` 不触网）。实测：78 条全部入库（17/12/11/10/9/8/6/5），连跑两遍条数不变（幂等通过），最长切片 732 字 < 800；固定三问冒烟均召回 5 条，「有什么需要注意的」稳定命中注意事项类。观测待调参：「去日本旅游消费如何」top-5 偏签证类（score≈0.63–0.65），消费汇总条未进前排，阈值/top-k 与查询重写需后续优化。
+- **离线调参**：切分规则已定（按 `(?=【)` 条目边界切、块长 800、重叠 0）并已落地实测；**相似度阈值与 top-k 尚未定稿**——冒烟召回已跑通（见下），实测 score 区间 0.45–0.65，阶段二在线检索暂取 `threshold=0.3 / topK=5` 作起点，正式调参属阶段一收尾项。
+- **本地索引（2026-11-16 落地）**：ETL 以通用工具类落在 `utils` 包——`RegexTextSplitter`（继承 `TextSplitter`，正则边界切分 + 800 字超长硬切兜底；框架无现成正则切分器，属自研）与 `DocumentEtlUtils`（`MarkdownDocumentReader` 读取 → 切分 → 元数据富化 → 按 source 先删后建写入 `VectorStore`）。每切片带 `source`（文件名）与 `category`（`【类别｜…】` 头首段）metadata。触发入口为手动测试 `RagEtlPipelineTest`（`-DragEtl=true` 门禁，普通 `mvn test` 不触网）。实测：79 条全部入库（18/12/11/10/9/8/6/5），连跑两遍条数不变（幂等通过），最长切片 732 字 < 800；固定三问冒烟均召回 5 条，「有什么需要注意的」稳定命中注意事项类。观测待调参：「去日本旅游消费如何」top-5 偏签证类（score≈0.63–0.65），消费汇总条未进前排，阈值/top-k 与查询重写需后续优化。
 
 ### 阶段二：RAG 快速验证
 
 | 状态 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
 |---|---|---|---|---|---|
-| ⬜ | QuestionAnswerAdvisor 验证 | 挂 `QuestionAnswerAdvisor` 到 `ChatClient`，用阶段一参数验证本地检索效果 | 可运行的 Naive RAG | 知识类问题能召回并体现库内内容 | 阶段一 |
+| ✅ | QuestionAnswerAdvisor 验证 | 挂 `QuestionAnswerAdvisor` 到 `ChatClient`，用阶段一参数验证本地检索效果 | 可运行的 Naive RAG | 知识类问题能召回并体现库内内容 | 阶段一 |
 
 > 该阶段仅验证可行性，黑盒不可编排，不作为最终形态、不写简历。
+
+阶段二落地情况（2026-11-16）：
+
+- **装配落点**：`ChatAiConfig.questionAnswerAdvisor`（`SearchRequest.similarityThreshold(0.3)` + `topK(5)`，无过滤表达式）挂入 `tourGuideChatClient.defaultAdvisors`，`GuideApp` / `ChatController` 零改动，同步 `/chat` 与流式 `/chat/stream` 同时生效。
+- **模板**：默认模板会强制「仅依据上下文回答」，与闲聊场景冲突，改为自定义混合式中文模板（有召回优先依据语料、召回为空保持人设正常对话）。占位符为 1.1.x 固定名 `{query}` / `{question_answer_context}`，写错会报 `Not all variables were replaced`。
+- **阈值依据**：离线冒烟实测召回 score 区间 0.45–0.65，DashScope 嵌入余弦分布整体偏低，官方示例的 0.8 会召回为空，故取 0.3。
+- **order 陷阱（踩坑记录）**：`DefaultChatClient.buildAdvisorChain()` 追加的 `ChatModelCallAdvisor` / `ChatModelStreamAdvisor` order 为 `Integer.MAX_VALUE`，链按 `OrderComparator` **升序 + 稳定**排序。把 QAA 显式设为 `Integer.MAX_VALUE` 会与链尾模型 Advisor 同序并被排到其后，而终端 Advisor 直接调模型不再推进链 —— QAA 的 `before()` 永不执行（表现为无 embedding、无 pgvector 查询、模型称未收到参考资料）。保持默认 order=0 即正常。
+- **验收实测**：固定三问均召回库内一手数据（签证 715/830 元、贵船往返 1750 円、成田夜车 26000 円）；「推荐几个欧洲城市」对照组不谎称引用；探针问题可让模型逐条列出召回切片原文。
 
 ### 阶段三：RAG 链路编排与 Agentic 化
 
@@ -124,19 +132,19 @@ graph TD
 - ✅ `spring-ai-markdown-document-reader`：`MarkdownDocumentReader`（ETL Extract，1.1.2）。
 - ✅ `spring-ai-alibaba-starter-dashscope`：`DashScopeEmbeddingModel` 自动装配（1.1.2.0，对应 Spring AI 1.1.2）。
 - ⬜ `spring-ai-rag`：`RetrievalAugmentationAdvisor` 及四模块。
-- ⬜ `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`。
+- ✅ `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`（1.1.2 已落地；2.0 起该模块更名 `spring-ai-vector-store-advisor`）。
 
 **application.yml / .env：**
 
 - ✅ 数据源单库 PostgreSQL：`spring.datasource` 的 url / username / password 写作 `${PG_URL}` / `${PG_USERNAME}` / `${PG_PASSWORD}`，真实值放 `.env`（已 gitignore，不入库）；对话记忆表与向量表同库同源，不再有「pgvector 独立于主库」的双数据源问题。
 - ✅ `spring.ai.vectorstore.pgvector.initialize-schema: true` 幂等建表（建表脚本依赖的 `vector` / `hstore` / `uuid-ossp` 已在实例装好），`index-type: HNSW`、`distance-type: COSINE_DISTANCE`、`dimensions: 1024`。
 - ✅ Embedding 走 **Spring AI Alibaba starter 原生通道**（2026-11-16 调整，替代原 OpenAI 兼容模式方案）：顶层开关 `spring.ai.model.embedding: dashscope`（同时关闭 OpenAI embedding 自动装配，容器内仅一个 EmbeddingModel），独立配置区 `spring.ai.dashscope.api-key` + `spring.ai.dashscope.embedding.options.{model, dimensions, text-type}`。**模型 `qwen3.7-text-embedding-flash`、维度 1024 已实测连通**（官方文档 Supported Models 未列该模型，model 为透传字符串，单条嵌入验证返回 1024 维）；`text-type: document` 用于入库，在线查询阶段按 `query` 覆盖。`dimensions` 与 `vectorstore.pgvector.dimensions` 必须一致，否则入库报 `22000 vector type mismatch`。chat 仍走 OpenAI 兼容模式不受影响，对话链路回归通过。
-- ⬜ 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。
+- ⏳ 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。验证阶段以 `ChatAiConfig` 常量单源（0.3 / 5，无魔法值散落），尚未迁到 `application.yml`；正式调参定稿后再配置化。
 
 **代码落点：**
 
 - ✅ ETL 落点：`utils/RegexTextSplitter` + `utils/DocumentEtlUtils`（通用工具类，不绑定触发方式）；手动触发入口 `src/test/java/.../rag/RagEtlPipelineTest`（嵌入连通性 → 幂等入库 → 冒烟召回）。
-- ⬜ `ChatAiConfig` 后续挂 advisor / 注册检索 `@Tool`；检索管线封装在独立 service，保持分层与单一职责。
+- ⏳ `ChatAiConfig` 挂 advisor / 注册检索 `@Tool`：`QuestionAnswerAdvisor` 已挂入 `tourGuideChatClient`（阶段二验证形态）；检索管线封装为独立 service + `@Tool` 注册待阶段三。
 - ✅ 切 PG 已改的方言点：`ConversationService` 会话列表的 epoch 取值改为 `CAST(FLOOR(EXTRACT(EPOCH FROM MIN("timestamp" AT TIME ZONE 'Asia/Shanghai'))) AS BIGINT)`；`ChatMemoryEntity` 的 `@Table` 改小写 `spring_ai_chat_memory`。
 
 > 本文档描述方案，pom 与 yml 的实际改动在对应开发阶段执行；上面带 ✅ 的条目表示已落地并实测通过。
