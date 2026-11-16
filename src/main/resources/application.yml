@@ -23,7 +23,16 @@ spring:
       max-attempts: 3
     model:
       chat: openai
-      embedding: openai
+      embedding: dashscope
+    # DashScope 嵌入独立配置区（Spring AI Alibaba 官方 dashscope-embeddings 文档）
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY}
+      embedding:
+        options:
+          model: qwen3.7-text-embedding-flash
+          # 必须与 vectorstore.pgvector.dimensions 一致，否则入库报 22000 vector type mismatch
+          dimensions: 1024
+          text-type: document
     vectorstore:
       pgvector:
         index-type: HNSW
@@ -44,10 +53,6 @@ spring:
           # 百炼 DeepSeek 系列默认开思考模式，同步接口需关闭以控制延迟与成本
           extra-body:
             "[enable_thinking]": false
-      embedding:
-        options:
-          model: qwen3.7-text-embedding-flash
-          dimensions: 1024
 server:
   port: 8123
   servlet:

@@ -86,14 +86,14 @@ graph TD
 | ✅ | 知识文档生成 | 用 AI 生成旅游相关知识文档（景点 / 路线 / 政策等） | 知识语料 | 覆盖典型导游问答场景 | 无 |
 | ⏳ | 离线调参 | 在百炼知识库做 ETL 测试，调切分规则、相似度阈值、top-k（**仅作参考**） | 调参记录 | 得出一组可迁移到本地的参数 | 知识文档 |
 | ✅ | 环境准备 | 准备 PostgreSQL 实例并启用 pgvector 扩展 | 向量库环境 | 连接可用，扩展已加载 | 无 |
-| ⬜ | 本地索引 | 用 Spring AI `DocumentReader`/`TextSplitter`/`EmbeddingModel` 跑通 ETL → 向量化 → 写入 `PgVectorStore` | 索引管线 | 文档入库，可按向量检索到切片 | 环境准备 |
+| ✅ | 本地索引 | 用 Spring AI `DocumentReader`/`TextSplitter`/`EmbeddingModel` 跑通 ETL → 向量化 → 写入 `PgVectorStore` | 索引管线 | 文档入库，可按向量检索到切片 | 环境准备 |
 
 阶段一已完成部分的实际落地情况：
 
 - **知识文档**：`docs/rag/` 共 8 篇、78 个条目（交通 17 / 体验关西 12 / 体验关东 11 / 餐饮购物娱乐 10 / 住宿与城际 9 / 注意事项 8 / 证件与换汇 6 / 签证 5），条目自带 `【类别｜…】` 元数据头。
 - **环境准备（与原计划的差异）**：不用本地安装，改用**阿里云百炼开通的云 PostgreSQL 18.6**；`vector`、`hstore`、`uuid-ossp` 三个扩展均已就绪，公网地址连通。应用 `spring.datasource` 整体切到该库（弃用本地 MySQL），使 Spring AI 的 `JdbcChatMemoryRepository` 与 `PgVectorStore` 共用同一个数据源，从根上消掉多数据源装配。启动实测已自动建出两张表：`spring_ai_chat_memory`、`vector_store(embedding vector(1024))` + HNSW 索引 `spring_ai_vector_index`；对话链路在新库上回归通过。
-- **离线调参**：切分规则已定（按 `(?=【)` 条目边界切、块长 800、重叠 0），但**相似度阈值与 top-k 尚未测**——需要本地入库完成后才能跑召回，属阶段一收尾项。
-- **本地索引**：ETL 管线未实施，留下一轮。
+- **离线调参**：切分规则已定（按 `(?=【)` 条目边界切、块长 800、重叠 0）并已落地实测；**相似度阈值与 top-k 尚未定稿**——冒烟召回已跑通（见下），正式调参属阶段一收尾项。
+- **本地索引（2026-11-16 落地）**：ETL 以通用工具类落在 `utils` 包——`RegexTextSplitter`（继承 `TextSplitter`，正则边界切分 + 800 字超长硬切兜底；框架无现成正则切分器，属自研）与 `DocumentEtlUtils`（`MarkdownDocumentReader` 读取 → 切分 → 元数据富化 → 按 source 先删后建写入 `VectorStore`）。每切片带 `source`（文件名）与 `category`（`【类别｜…】` 头首段）metadata。触发入口为手动测试 `RagEtlPipelineTest`（`-DragEtl=true` 门禁，普通 `mvn test` 不触网）。实测：78 条全部入库（17/12/11/10/9/8/6/5），连跑两遍条数不变（幂等通过），最长切片 732 字 < 800；固定三问冒烟均召回 5 条，「有什么需要注意的」稳定命中注意事项类。观测待调参：「去日本旅游消费如何」top-5 偏签证类（score≈0.63–0.65），消费汇总条未进前排，阈值/top-k 与查询重写需后续优化。
 
 ### 阶段二：RAG 快速验证
 
@@ -121,6 +121,8 @@ graph TD
 **pom.xml 新增：**
 
 - ✅ `spring-ai-starter-vector-store-pgvector`：`PgVectorStore` 自动装配（1.1.2 已落地，依赖树含 `spring-ai-pgvector-store` 与 `com.pgvector:pgvector:0.1.6`）。
+- ✅ `spring-ai-markdown-document-reader`：`MarkdownDocumentReader`（ETL Extract，1.1.2）。
+- ✅ `spring-ai-alibaba-starter-dashscope`：`DashScopeEmbeddingModel` 自动装配（1.1.2.0，对应 Spring AI 1.1.2）。
 - ⬜ `spring-ai-rag`：`RetrievalAugmentationAdvisor` 及四模块。
 - ⬜ `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`。
 
@@ -128,11 +130,12 @@ graph TD
 
 - ✅ 数据源单库 PostgreSQL：`spring.datasource` 的 url / username / password 写作 `${PG_URL}` / `${PG_USERNAME}` / `${PG_PASSWORD}`，真实值放 `.env`（已 gitignore，不入库）；对话记忆表与向量表同库同源，不再有「pgvector 独立于主库」的双数据源问题。
 - ✅ `spring.ai.vectorstore.pgvector.initialize-schema: true` 幂等建表（建表脚本依赖的 `vector` / `hstore` / `uuid-ossp` 已在实例装好），`index-type: HNSW`、`distance-type: COSINE_DISTANCE`、`dimensions: 1024`。
-- ✅ Embedding 走 DashScope OpenAI 兼容模式：`spring.ai.model.embedding: openai` + `spring.ai.openai.embedding.options.{model, dimensions}`。**模型定为 `qwen3.7-text-embedding-flash`、维度 1024**（原文档写的 `text-embedding-v4` / 1536 已作废：flash 只支持 1024/768/512/256）；`dimensions` 与 `vectorstore.pgvector.dimensions` 必须一致，否则入库报 `22000 vector type mismatch`。
+- ✅ Embedding 走 **Spring AI Alibaba starter 原生通道**（2026-11-16 调整，替代原 OpenAI 兼容模式方案）：顶层开关 `spring.ai.model.embedding: dashscope`（同时关闭 OpenAI embedding 自动装配，容器内仅一个 EmbeddingModel），独立配置区 `spring.ai.dashscope.api-key` + `spring.ai.dashscope.embedding.options.{model, dimensions, text-type}`。**模型 `qwen3.7-text-embedding-flash`、维度 1024 已实测连通**（官方文档 Supported Models 未列该模型，model 为透传字符串，单条嵌入验证返回 1024 维）；`text-type: document` 用于入库，在线查询阶段按 `query` 覆盖。`dimensions` 与 `vectorstore.pgvector.dimensions` 必须一致，否则入库报 `22000 vector type mismatch`。chat 仍走 OpenAI 兼容模式不受影响，对话链路回归通过。
 - ⬜ 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。
 
 **代码落点：**
 
+- ✅ ETL 落点：`utils/RegexTextSplitter` + `utils/DocumentEtlUtils`（通用工具类，不绑定触发方式）；手动触发入口 `src/test/java/.../rag/RagEtlPipelineTest`（嵌入连通性 → 幂等入库 → 冒烟召回）。
 - ⬜ `ChatAiConfig` 后续挂 advisor / 注册检索 `@Tool`；检索管线封装在独立 service，保持分层与单一职责。
 - ✅ 切 PG 已改的方言点：`ConversationService` 会话列表的 epoch 取值改为 `CAST(FLOOR(EXTRACT(EPOCH FROM MIN("timestamp" AT TIME ZONE 'Asia/Shanghai'))) AS BIGINT)`；`ChatMemoryEntity` 的 `@Table` 改小写 `spring_ai_chat_memory`。
 

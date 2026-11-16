@@ -32,6 +32,7 @@
         <knife4j.version>4.5.0</knife4j.version>
         <mybatis-flex.version>1.11.7</mybatis-flex.version>
         <spring-ai.version>1.1.2</spring-ai.version>
+        <spring-ai-alibaba.version>1.1.2.0</spring-ai-alibaba.version>
     </properties>
     <dependencies>
         <dependency>
@@ -78,6 +79,18 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
             <version>${spring-ai.version}</version>
+        </dependency>
+        <!-- RAG 离线索引：Markdown 文档读取（ETL Extract 阶段） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-markdown-document-reader</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+        <!-- DashScope 嵌入模型：官方 starter 自动装配 DashScopeEmbeddingModel（spring.ai.model.embedding=dashscope 启用） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <version>${spring-ai-alibaba.version}</version>
         </dependency>
         <!-- Hutool Java 工具类库 -->
         <dependency>
