@@ -86,6 +86,12 @@
             <artifactId>spring-ai-markdown-document-reader</artifactId>
             <version>${spring-ai.version}</version>
         </dependency>
+        <!-- 在线 RAG：QuestionAnswerAdvisor 所在模块（1.1.x 独立 artifact，starter 不传递） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-advisors-vector-store</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
         <!-- DashScope 嵌入模型：官方 starter 自动装配 DashScopeEmbeddingModel（spring.ai.model.embedding=dashscope 启用） -->
         <dependency>
             <groupId>com.alibaba.cloud.ai</groupId>

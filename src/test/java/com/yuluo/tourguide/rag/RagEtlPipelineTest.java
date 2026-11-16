@@ -43,7 +43,7 @@ class RagEtlPipelineTest {
 
     private static final int EMBEDDING_DIMENSIONS = 1024;
 
-    private static final int EXPECTED_TOTAL_CHUNKS = 78;
+    private static final int EXPECTED_TOTAL_CHUNKS = 79;
 
     private static final int SMOKE_TOP_K = 5;
 
