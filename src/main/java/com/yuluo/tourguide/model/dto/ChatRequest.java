@@ -10,9 +10,6 @@ import java.io.Serializable;
 @Data
 public class ChatRequest implements Serializable {
 
-    /**
-     * 用户提问内容
-     */
     private String message;
 
     /**

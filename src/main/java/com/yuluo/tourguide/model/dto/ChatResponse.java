@@ -19,9 +19,6 @@ public class ChatResponse implements Serializable {
      */
     private String conversationId;
 
-    /**
-     * AI 回复内容
-     */
     private String reply;
 
     private static final long serialVersionUID = 1L;

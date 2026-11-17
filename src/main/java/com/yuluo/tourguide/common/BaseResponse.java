@@ -7,9 +7,7 @@ import lombok.Data;
 import java.io.Serializable;
 
 /**
- * 通过响应类
- *
- * @param <T>
+ * 通用响应类，code=0 表示成功，data 为业务载荷，message 为提示信息
  */
 @Data
 public class BaseResponse<T> implements Serializable {

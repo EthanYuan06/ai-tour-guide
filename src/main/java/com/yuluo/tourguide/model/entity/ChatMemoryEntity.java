@@ -15,15 +15,9 @@ import java.time.LocalDateTime;
 @Table("spring_ai_chat_memory")
 public class ChatMemoryEntity {
 
-    /**
-     * 会话 id
-     */
     @Column("conversation_id")
     private String conversationId;
 
-    /**
-     * 消息正文
-     */
     private String content;
 
     /**

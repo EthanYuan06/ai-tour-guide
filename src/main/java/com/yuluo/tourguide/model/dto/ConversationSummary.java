@@ -14,9 +14,6 @@ import java.io.Serializable;
 @AllArgsConstructor
 public class ConversationSummary implements Serializable {
 
-    /**
-     * 会话 id
-     */
     private String conversationId;
 
     /**
