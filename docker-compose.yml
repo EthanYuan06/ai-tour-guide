@@ -1,30 +1,28 @@
 name: ai-tour-guide
 
 services:
-  mysql:
-    # 默认 mysql:8.4（LTS）；变量仅为本地验证等场景留的覆盖口，服务器上无需设置
-    image: ${MYSQL_IMAGE:-mysql:8.4}
+  pgvector:
+    # PG18 + vector/hstore/uuid-ossp 扩展镜像内置；application 启动时自动建表，无需手工 DDL
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg18}
+    container_name: ai-pgvector   # 固定名：兼容既有文档/记忆里的 docker exec ai-pgvector 命令
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      # 库名必须与 application.yml JDBC URL 严格一致且为小写（Linux 下 MySQL 标识符大小写敏感）
-      MYSQL_DATABASE: ai_tour_guide
+      POSTGRES_DB: ai_tour_guide
+      # 与 .env 的 PG_PASSWORD 同源，服务器上换强口令即可，两处保持一致
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
       TZ: Asia/Shanghai
-    # 128M buffer pool + 关 performance-schema，适配 2G 内存小机
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --innodb-buffer-pool-size=128M
-      - --performance-schema=off
+    # PG18 数据目录在 /var/lib/postgresql/18/docker，卷必须挂在上一层，挂 data 子目录会 crash loop
     volumes:
-      - mysql_data:/var/lib/mysql
+      - pgvector_data:/var/lib/postgresql
+    ports:
+      # 仅回环，IDEA/psql 直连用；公网不可达
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      # $$ 是 compose 转义，运行期由容器内 shell 展开 MYSQL_ROOT_PASSWORD
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_tour_guide"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 40s
+      start_period: 30s
     networks: [appnet]
 
   backend:
@@ -36,16 +34,13 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      # 整条覆盖 application.yml 里硬编码的 localhost 数据源，三个查询参数一个都不能丢
-      # （allowPublicKeyRetrieval 是 MySQL 8 caching_sha2_password 非 SSL 连接的前提）
-      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/ai_tour_guide?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
-      MYSQL_USERNAME: ${MYSQL_USERNAME}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      # 覆盖 .env 里指向 localhost 的开发库地址，容器网络内走服务名；账号密码仍由 env_file 注入
+      PG_URL: "jdbc:postgresql://pgvector:5432/ai_tour_guide"
       TZ: Asia/Shanghai
       # 堆上限约为容器可见内存的 55%，OOM 时退出交由 restart 策略拉起而非僵死
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=55.0 -XX:+ExitOnOutOfMemoryError"
     depends_on:
-      mysql:
+      pgvector:
         condition: service_healthy
     # 仅回环调试口，公网不可达；应急排查用 curl 127.0.0.1:18123/api/health
     ports:
@@ -74,7 +69,10 @@ services:
     networks: [appnet]
 
 volumes:
-  mysql_data:
+  pgvector_data:
+    # 复用本地既有的数据卷（手动创建的 ai_pgvector_data）；服务器上先 `docker volume create ai_pgvector_data` 再起 compose
+    name: ai_pgvector_data
+    external: true
 
 networks:
   appnet:

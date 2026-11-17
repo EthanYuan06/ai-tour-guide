@@ -9,7 +9,7 @@
      → 宝塔 Nginx 站点（Let's Encrypt SSL、强制 HTTPS、整站反向代理）
      → 127.0.0.1:18080  frontend 容器（nginx 托管静态页 + 反代 /api，关 SSE 缓冲）
      → backend 容器（Spring Boot :8123，context-path /api，SSE 超时 300s）
-     → mysql 容器（8.4，仅容器网络内部可达，数据存卷）
+     → pgvector 容器（PG18 内置 vector 扩展，数据存卷；5432 仅绑回环，公网不可达）
 外部依赖：阿里云百炼 HTTPS API（服务器出方向访问，无需开任何入站端口）
 ```
 
@@ -43,21 +43,27 @@ git clone https://github.com/EthanYuan06/ai-tour-guide.git /www/wwwroot/ai-tour-
    ```ini
    DASHSCOPE_API_KEY=<你的百炼Key>
    AI_TOUR_GUIDE_CHAT_MODEL=deepseek-v4.1-flash
-   MYSQL_USERNAME=root
-   MYSQL_PASSWORD=<强密码A>
-   MYSQL_ROOT_PASSWORD=<强密码A>
+   PG_URL=jdbc:postgresql://localhost:5432/ai_tour_guide
+   PG_USERNAME=postgres
+   PG_PASSWORD=<强口令B>
    ```
 
-   注意：compose 里应用账号即 root，`MYSQL_PASSWORD` 与 `MYSQL_ROOT_PASSWORD` **必须相同**；本地 `.env` 的 `1234` 只用于本机开发，服务器上换强口令。
+   注意：`pgvector` 服务的 `POSTGRES_PASSWORD` 与后端连库共用 `${PG_PASSWORD}` 一个变量，**两处必须同源**；compose 的 `backend` 会在 `environment` 里用服务名地址整条覆盖 `PG_URL`（写 localhost 也生效不到，但保持与本目录 `.env` 一致便于阅读）。本地 `.env` 的 `postgres` 只用于本机开发，服务器上换强口令。
 
-2. 2G 内存机器构建（`mvn package` / `npm ci`）有 OOM 风险，先加 swap：宝塔「监控」页 → 交换分区 → 设置 `2048MB`；或终端：
+2. 数据卷由 compose 声明为 `external`（复用固定名 `ai_pgvector_data`，见 `docker-compose.yml` 顶层 volumes），服务器首次部署先执行一次：
+
+   ```bash
+   docker volume create ai_pgvector_data
+   ```
+
+3. 2G 内存机器构建（`mvn package` / `npm ci`）有 OOM 风险，先加 swap：宝塔「监控」页 → 交换分区 → 设置 `2048MB`；或终端：
 
    ```bash
    fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
    echo '/swapfile none swap sw 0 0' >> /etc/fstab   # 开机自动挂载
    ```
 
-3. Windows 端提交的 shell 脚本可能是 CRLF 换行，服务器上执行一次（仓库已加 `.gitattributes` 强制 LF，新 clone 一般无需此步）：
+4. Windows 端提交的 shell 脚本可能是 CRLF 换行，服务器上执行一次（仓库已加 `.gitattributes` 强制 LF，新 clone 一般无需此步）：
 
    ```bash
    cd /www/wwwroot/ai-tour-guide
@@ -73,7 +79,7 @@ cd /www/wwwroot/ai-tour-guide
 ./deploy.sh logs backend | grep Started   # 确认 Spring 启动完成
 ```
 
-预期节奏：mysql 首次初始化约 30~60s → healthy 后 backend 启动（约 40~90s）→ backend healthy 后 frontend 启动。`depends_on` 的健康条件保证了这个顺序。
+预期节奏：pgvector 首次初始化约 20~40s → healthy 后 backend 启动（约 40~90s）→ backend healthy 后 frontend 启动。`depends_on` 的健康条件保证了这个顺序。
 
 ## 第 4 步 宝塔建站 + 反向代理
 
@@ -126,8 +132,8 @@ cd /www/wwwroot/ai-tour-guide
 # 2. 后端进程：健康检查
 docker compose exec backend wget -qO- http://127.0.0.1:8123/api/health    # 期望 ok
 
-# 3. 数据层：Spring AI 记忆表已自动建出（initialize-schema 生效）
-docker compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SHOW TABLES IN ai_tour_guide;"'
+# 3. 数据层：Spring AI 记忆表与向量表已自动建出（initialize-schema 生效）
+docker compose exec pgvector psql -U postgres -d ai_tour_guide -c '\dt'
 
 # 4. 宿主机 → 前端容器 → 后端全链路（/api 前缀未被剥）
 curl -s http://127.0.0.1:18080/api/health    # 期望 ok
@@ -141,7 +147,7 @@ curl -s https://yuluo-ai.site/api/health     # 期望 ok
 curl -sN "https://yuluo-ai.site/api/chat/stream?message=%E4%BD%A0%E5%A5%BD"
 ```
 
-浏览器终验：打开 `https://yuluo-ai.site` 发一轮对话 → F12 Network 里 `/api/chat/stream` 为 EventStream 且内容逐帧增长 → **刷新页面，会话列表和历史消息仍在**（MySQL 持久化）→ 服务器 `reboot` 后再验一次（数据卷 + 开机自启 `restart: unless-stopped` 生效）。
+浏览器终验：打开 `https://yuluo-ai.site` 发一轮对话 → F12 Network 里 `/api/chat/stream` 为 EventStream 且内容逐帧增长 → **刷新页面，会话列表和历史消息仍在**（PostgreSQL 持久化）→ 服务器 `reboot` 后再验一次（数据卷 + 开机自启 `restart: unless-stopped` 生效）。
 
 ## 第 7 步 故障速查表
 
@@ -151,7 +157,7 @@ curl -sN "https://yuluo-ai.site/api/chat/stream?message=%E4%BD%A0%E5%A5%BD"
 | 502 Bad Gateway | `./deploy.sh status` 容器没起 → `./deploy.sh logs backend` 看异常 → 端口被占（`ss -lntp \| grep -E '18080\|18123'`，宿主机手起的 Java 进程要先停） |
 | 回复不逐字流式 | 三层缓冲逐个查：宝塔反代配置文件的 `location /api/` → 前端容器 nginx `proxy_buffering off` → 后端无额外层；改完宝塔须 reload |
 | 长回复中途断流 | 超时链倒挂：宝塔/前端 600s 必须 ≥ Spring 300s；确认第 4 步的 `proxy_read_timeout` 片段已插入 |
-| 后端连不上 MySQL | `SPRING_DATASOURCE_URL` 三个参数是否完整（丢 `allowPublicKeyRetrieval` 报 Public Key Retrieval）；库名是否小写 `ai_tour_guide`（Linux 大小写敏感）；`./deploy.sh status` 里 mysql 是否 healthy；`.env` 里两个密码是否一致 |
+| 后端连不上 PostgreSQL | compose `backend` 的 `PG_URL` 是否指向服务名 `pgvector:5432`（写成 localhost 会连到容器自身）；`./deploy.sh status` 里 pgvector 是否 healthy；`.env` 的 `PG_PASSWORD` 与 pgvector 初始化口令是否同源；嵌入维度 1024 与 `vector_store` 表列是否一致（不一致报 22000 vector type mismatch） |
 | 构建卡在 FROM 拉镜像 | Docker 镜像加速是否生效：`docker info` 查 Mirrors；兜底手动 pull + tag |
 | 构建期进程被 Killed | swap 没加或太小；`docker compose build` 拆开逐服务构建；重试即可（层缓存会续上） |
 | Let's Encrypt 签发失败 | 反代吞了 acme-challenge：暂停反代 → 签发 → 恢复（见第 5 步） |
@@ -174,6 +180,6 @@ cd /www/wwwroot/ai-tour-guide
 
 ```bash
 cd /www/wwwroot/ai-tour-guide
-docker compose exec -T mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" ai_tour_guide' \
+docker compose exec -T pgvector pg_dump -U postgres ai_tour_guide \
   > /www/backup/sql/ai_tour_guide_$(date +%F).sql
 ```

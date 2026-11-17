@@ -5,7 +5,7 @@
 #   ./deploy.sh restart                 重启全部服务
 #   ./deploy.sh update                  拉取代码、重建镜像并滚动更新
 #   ./deploy.sh status                  查看容器状态
-#   ./deploy.sh logs [mysql|backend|frontend]  跟随日志（默认全部）
+#   ./deploy.sh logs [pgvector|backend|frontend]  跟随日志（默认全部）
 set -e
 cd "$(dirname "$0")"
 
@@ -20,7 +20,7 @@ case "$1" in
         $DC up -d --build
         ;;
     down)
-        # 刻意不带 -v：数据卷（MySQL）永久保留
+        # 刻意不带 -v：数据卷（PGVector）永久保留
         $DC down
         ;;
     restart)
