@@ -6,8 +6,8 @@
 
 ### 1.1 最终要达到的技术目标
 
-1. **需求复杂度路由**：由 qwen3.8-flash 对每条用户消息做复杂度分析，简单需求走 ChatClient 直连对话，复杂需求（需实时信息、多步规划、多工具协作）转入 Agent 模式，避免所有请求都走重链路。
-2. **ReAct Agent 工具调用**：基于 deepseek-chat 的 Agent 按“思考—行动—观察”循环工作；联网检索采用两级策略，先 Tavily 搜索拿到候选链接与摘要，信息不足时再用 Firecrawl 抓取目标页面全文。
+1. **规划模式参数路由**：前端「规划模式」按钮随请求传入 planning mode 参数，路由节点按参数值分流——关闭走 ChatClient 快速响应链路（可按需调用工具），开启转入 ReAct Agent，避免所有请求都走重链路；路由判定不消耗大模型。
+2. **ReAct Agent 工具调用**：基于 deepseek-chat 的 Agent 按“思考—行动—观察”循环工作；联网检索采用两级策略，先 Tavily 搜索拿到候选链接与摘要，信息不足时再用 Firecrawl 抓取目标页面全文；Agent 链路另具备 PDF 生成与下载工具，支撑行程文档交付。
 3. **MCP 工具与多智能体**：接入高德地图 MCP（已含天气查询能力），并在 Agent 路线上设计 Supervisor 多智能体架构，由 Supervisor 调度地图、天气、检索等子 Agent 并发工作。
 4. **全模式 RAG**：简单对话与 Agent 模式均具备知识库检索增强能力，检索按需触发（涉及景点/路线/政策等知识性问题时才执行向量检索），RAG 作为两种模式的公共基础能力。
 5. **用户体系**：基于云 PostgreSQL 单库的登录模块，提供注册/登录能力，会话与业务数据按用户隔离。
@@ -15,9 +15,9 @@
 ### 1.2 架构分层（文字描述）
 
 - **接入层**：Vue3 + Vite 构建的响应式 Web 界面，负责对话交互、流式渲染与行程展示。
-- **应用层**：Spring Boot 承载 ChatClient、复杂度路由、RAG 检索、ReAct Agent、Supervisor 编排与记忆管理。
+- **应用层**：Spring Boot 承载 ChatClient、规划模式参数路由、RAG 检索、ReAct Agent、Supervisor 编排与记忆管理。
 - **能力与数据层**：DashScope 大模型、Tavily/Firecrawl 联网 API、高德 MCP 服务，存储侧为**云 PostgreSQL 单库**（pgvector 扩展，同时承载对话记忆表、向量表与业务数据）；Redis 作高并发缓存备选、暂未引入；MySQL 驱动保留仅作回退能力，当前 `spring.datasource` 不指向它。
-- **调用关系**：前端请求应用层（阶段二起经登录鉴权）；路由节点决定直连或 Agent；两条链路按需触发 RAG 检索；Agent 通过 MCP Client 与联网工具完成任务；对话记忆已从内存实现切换为 Spring AI 内置 JdbcChatMemoryRepository + PostgreSQL 持久化（原 SAA RedisChatMemory 方案暂缓），业务数据与记忆表、向量表同库同源。
+- **调用关系**：前端请求应用层（阶段二起经登录鉴权）；路由节点按 planning mode 参数决定走快速响应链路还是 ReAct Agent；两条链路按需触发 RAG 检索；Agent 通过 MCP Client 与联网工具完成任务；对话记忆已从内存实现切换为 Spring AI 内置 JdbcChatMemoryRepository + PostgreSQL 持久化（原 SAA RedisChatMemory 方案暂缓），业务数据与记忆表、向量表同库同源。
 
 ### 1.3 目标架构流程图
 
@@ -47,10 +47,10 @@ graph TD
     ReqAnalysis -- 不完备 --> Clarify["需求澄清节点<br>前期 MVP: 多轮对话引导<br>最终版: HITL 人工介入"]:::enhancement
     Clarify -- 补充完毕 --> ReqAnalysis
 
-    ReqAnalysis -- 完备 --> Router{qwen3.8-flash 复杂度路由}:::decision
+    ReqAnalysis -- 完备 --> Router{规划模式参数路由<br>前端「规划模式」按钮}:::decision
 
     %% ================= 4. 左下方：复杂规划链路 =================
-    Router -- 复杂多步规划 --> Supervisor{主 Agent Supervisor<br>ReAct 模式·拆解·验收}:::decision
+    Router -- 规划模式开启 --> Supervisor{主 Agent Supervisor<br>ReAct 模式·拆解·验收}:::decision
 
     subgraph ComplexFlow ["复杂行程规划链路 (多 Agent 协同)"]
         direction TB
@@ -69,7 +69,7 @@ graph TD
     end
 
     %% ================= 5. 右下方：简单快问快答链路 =================
-    Router -- 简单/单一事实 --> FastAgent[大模型综合处理<br>deepseek-chat]:::highlight
+    Router -- 规划模式关闭（默认） --> FastAgent[大模型综合处理<br>deepseek-chat]:::highlight
 
     subgraph SimpleFlow ["简单快问快答链路 (All-in-One 极简版)"]
         direction TB
@@ -84,7 +84,7 @@ graph TD
 
 要点说明：
 
-1. **模型分工与分流**：需求完备性判断与复杂度路由由 qwen3.8-flash 承担；简单需求走 ChatClient（deepseek-chat）直连并经 RAG 增强后回答，复杂需求进入 Supervisor 多智能体链路，与 1.1、2.6 的设计一一对应。
+1. **模型分工与分流**：需求完备性判断由 qwen3.8-flash 承担（目标架构演进项）；简单/复杂分流由前端「规划模式」按钮传入的 planning mode 参数判定、不消耗模型——关闭走 ChatClient（deepseek-chat）快速响应链路，按需调用联网工具并经 RAG 增强后回答，开启进入 Agent 链路（最终形态为 Supervisor 多智能体），与 1.1、2.6 的设计一一对应。
 2. **HITL 演进路径**：需求澄清前期依赖多轮对话引导（阶段一系统提示词能力），阶段五接入 Human-in-the-loop 后，关键节点可人工拦截确认再恢复执行，图中以紫色虚线分支表示该演进能力。
 3. **前端可见性**：Supervisor 的工具调用与子 Agent 派发过程事件均以虚线推送至前端，逐段展示思考链、工具调用与子任务状态，配合流式输出保证长链路可感知。
 
@@ -147,11 +147,10 @@ graph TD
 
 | 环节 | 模型 | 选择理由 |
 |---|---|---|
-| 复杂度路由 | qwen3.8-flash | Flash 档快速且低成本，分类任务对推理要求低，降低路由开销 |
 | 简单对话 | deepseek-chat | 通用对话与行程生成能力强，直连链路输出稳定 |
 | ReAct Agent | deepseek-chat | 工具调用与多步推理表现好，同一模型贯通 Agent 链路 |
 
-说明：deepseek-chat 为 DeepSeek 官方对话模型名，百炼平台侧可对应 deepseek-v4 系列；通过多模型配置分别注入路由节点与对话、Agent 链路。
+说明：deepseek-chat 为 DeepSeek 官方对话模型名，百炼平台侧可对应 deepseek-v4 系列。链路分流由前端「规划模式」按钮传入的 planning mode 参数判定，零模型开销；qwen3.8-flash 不再承担路由，仅保留给目标架构中的需求完备性分析（演进项）。
 
 ## 三、项目开发流程（主线）
 
@@ -159,7 +158,7 @@ graph TD
 2. **工程骨架**：后端用 Spring Initializr 搭建 Boot 3.5.x 工程并引入 SAA BOM；前端用 Vite 创建 Vue3 工程；约定前后端接口规范与目录结构。
 3. **阶段一 MVP 开发**：完成 ChatClient 接入、系统提示词、内存会话、流式输出与对话界面，按验收门禁通过后再进入下一阶段。
 4. **阶段二 登录与持久化 + RAG**：按优先级依次开发登录模块（云 PostgreSQL 单库）、知识库建设、向量检索与 RAG 全链路搭建（按需触发）。会话记忆持久化已提前以 JdbcChatMemoryRepository + PostgreSQL 落地；知识库建设、向量检索与 RAG 黑盒验证已在单库 pgvector 上直接完成（未走「先内存跑通再迁移」的中间形态，见《RAG 开发文档》阶段一、二）。
-5. **阶段三 Agent 与联网**：实现复杂度路由与 ReAct Agent，接入 Tavily/Firecrawl，补齐工具调用日志与失败处理。
+5. **阶段三 工具调用与 ReAct Agent 初步构建**：按「编写工具并注册 → 快速响应链路注入工具 → planning mode 参数路由节点（前端『规划模式』按钮）→ ReAct Agent」四个子阶段循序渐进；快速链路注入 Tavily/Firecrawl/结束工具，Agent 链路追加 PDF 生成与下载工具，补齐工具调用日志与失败处理。
 6. **阶段四 MCP 与多智能体**：接入高德 MCP，将单 Agent 演进为 Supervisor 架构并验证子 Agent 并发，接入可观测能力。
 7. **阶段验收门禁**：每阶段完成后对照 Task 表验收，未通过不进入下一阶段；问题记录到风险清单并优先修复。
 8. **收尾沉淀**：整理 README、部署脚本与演示数据，提炼简历项目描述与面试问答。
@@ -189,17 +188,25 @@ graph TD
 | 2 | 会话记忆持久化（已完成） | 用 Spring AI 内置 JdbcChatMemoryRepository 替换内存实现，会话记忆写入 PostgreSQL `spring_ai_chat_memory`（原 Redis 方案暂缓） | JDBC 记忆配置 | 会话记忆可写入并读取，重启服务后历史可恢复 | 登录模块 |
 | 3 | 知识库建设（已完成） | 旅游文档收集、清洗、切分与向量化，直接落 pgvector（`vector_store`，1024 维 COSINE + HNSW） | 知识文档与索引 | 文档可被检索，切分无明显断句问题 | 登录模块 |
 | 4 | 向量检索（已完成） | `PgVectorStore` 自动装配单库数据源，相似度检索召回切片 | VectorStore 配置 | 相似问题能召回相关片段并注入上下文 | 知识库 |
-| 5 | RAG 全链路（部分完成） | 黑盒验证已由 `QuestionAnswerAdvisor` 完成（阈值 0.3 / topK 5，混合式模板）；按需触发与查询增强待阶段三编排 + `@Tool` 化 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发，来源可标注 | 向量检索 |
+| 5 | RAG 全链路（部分完成） | 黑盒验证已由 `QuestionAnswerAdvisor` 完成（阈值 0.3 / topK 5，混合式模板）；按需触发与查询增强待后续版本编排 + `@Tool` 化 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发，来源可标注 | 向量检索 |
 
-### 阶段三：ReAct Agent + 联网
+### 阶段三：工具调用与 ReAct Agent 初步构建
 
-| 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
-|---|---|---|---|---|
-| 复杂度路由 | 用 qwen3.8-flash 分析消息复杂度，分流直连与 Agent | 路由模块 | 典型简单/复杂用例分流正确 | 阶段二 |
-| ReAct Agent | 基于 Agent Framework 与 deepseek-chat 构建 ReactAgent | Agent 服务 | 能按思考—行动循环完成任务 | 路由模块 |
-| Tavily 接入 | 联网第一跳搜索与摘要 | Tavily 工具 | 可返回候选 URL 与摘要 | Agent 服务 |
-| Firecrawl 接入 | 按需抓取页面全文 | Firecrawl 工具 | 摘要不足时可拿到全文 Markdown | Tavily |
-| 容错与日志 | 超时、重试、调用链日志 | 日志与异常处理 | 工具失败可重试或降级，不中断对话 | 全部工具 |
+> 循序渐进分为四个子阶段：① 编写工具并注册 → ② 在快速响应链路中使用工具（注入 ChatClient）→ ③ 创建路由节点（非大模型判定，由前端「规划模式」按钮传入 planning mode 参数）→ ④ 构建 ReAct Agent。
+>
+> 阶段目标：1）快速响应链路中，大模型能根据需求调用工具完成任务；2）路由节点能根据参数值决定走 ChatClient 还是 ReAct Agent；3）ReAct Agent 能通过自主循环思考与规划，执行工具完成任务。
+
+| 子阶段 | 任务项 | 具体内容 | 交付物 | 验收标准 | 依赖 |
+|---|---|---|---|---|---|
+| ① 编写工具并注册 | Tavily 搜索工具 | `@Tool` 封装网页搜索，用于景点介绍、活动时间等实时信息 | Tavily 工具 | 可独立调通，返回候选 URL 与摘要 | 阶段二 |
+| ① | Firecrawl 抓取工具 | `@Tool` 封装页面抓取，Tavily 摘要不足时获取全文 Markdown | Firecrawl 工具 | 指定 URL 可拿到全文 | Tavily 工具 |
+| ① | 结束工具 | 结束 function calling 的工具，异常兜底用，供模型主动终止工具调用循环 | 结束工具 | 模型可调用并正常终止本轮工具调用 | — |
+| ② 快速链路使用工具 | ChatClient 注入工具 | 将 Tavily、Firecrawl、结束工具注入快速响应链路 ChatClient（deepseek-chat），由模型按需自主调用 | 带工具的快速响应链路 | **目标 1**：快速链路中大模型能根据需求调用工具完成任务（如问景点活动时间可联网作答） | 子阶段① |
+| ③ 创建路由节点 | 前端规划模式按钮 | 对话界面增加「规划模式」按钮，请求携带 planning mode 参数 | 前端按钮与传参 | 按钮状态正确随请求传递 | — |
+| ③ | 参数路由节点 | 后端按 planning mode 参数值分流：关闭→ChatClient 快速链路，开启→ReAct Agent 分支；不做模型判定 | 路由模块 | **目标 2**：参数值正确决定走 ChatClient 还是 ReAct Agent（Agent 分支于子阶段④接通，本阶段先验证分流正确） | 前端按钮 |
+| ④ 构建 ReAct Agent | ReactAgent 构建 | 基于 Agent Framework 与 deepseek-chat 构建 ReactAgent，接入路由 Agent 分支 | Agent 服务 | **目标 3**：能通过自主循环思考与规划，执行工具完成任务 | 路由节点 |
+| ④ | PDF 生成与下载工具 | 编写并注册 PDF 生成、下载工具，仅注入 Agent 链路，支撑行程文档交付 | PDF/下载工具 | Agent 可生成行程 PDF 并提供下载 | ReactAgent |
+| 贯穿 | 容错与日志 | 超时、重试、调用链日志 | 日志与异常处理 | 工具失败可重试或降级，不中断对话 | 全部工具 |
 
 ### 阶段四：MCP + Supervisor 多智能体
 
@@ -224,7 +231,7 @@ graph TD
 | 风险 | 影响 | 对策 |
 |---|---|---|
 | Spring Boot 4 无 SAA 适配 | 强行升级导致自动装配/依赖冲突 | 主线锁定 Boot 3.5.x，跟踪官方兼容表，适配后再迁移 |
-| Agent 工具失败或循环 | 任务卡死、回复异常 | 设置超时、最大迭代次数与重试，失败降级为直连回答 |
+| Agent 工具失败或循环 | 任务卡死、回复异常 | 设置超时、最大迭代次数与重试，失败降级为直连回答；提供结束工具供模型异常时主动终止 |
 | 外部 API 成本与配额 | 调用费用超预期、限流 | 默认只调 Tavily，Firecrawl 按需触发；控制上下文长度与频次 |
 | 记忆与数据单库可用性 | 云 PostgreSQL 单库同时承载记忆表、向量表与业务数据，实例不可用会同时打挂对话记忆、RAG 检索与登录 | 连接失败时接口报错可观测；实例走公网访问，需收紧白名单并核对配额；高并发读压力出现时再评估 Redis 缓存备选 |
 | MCP 外部服务可用性 | 地图/天气工具不可用 | 捕获异常并提示，保留无工具的基础回答能力 |
