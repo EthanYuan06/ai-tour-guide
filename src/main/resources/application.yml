@@ -40,6 +40,15 @@ spring:
         distance-type: COSINE_DISTANCE
         max-document-batch-size: 10000
         initialize-schema: true
+    # 快速响应链路默认工具（tool-calling starter 自动装配为 Function 服务 Bean，由 tools/config/DefaultToolsConfig 包装为 ToolCallback）
+    alibaba:
+      toolcalling:
+        tavilysearch:
+          enabled: true
+          api-key: ${TAVILY_API_KEY}
+        firecrawl:
+          enabled: true
+          api-key: ${FIRECRAWL_API_KEY}
     openai:
       base-url: https://dashscope.aliyuncs.com/compatible-mode
       api-key: ${DASHSCOPE_API_KEY}
@@ -57,6 +66,12 @@ server:
   port: 8123
   servlet:
     context-path: /api
+# 工具调用观测日志：模型 tool_calls 请求与工具执行往返发生在模型层内部，不过 Advisor 链，需 DEBUG 级别才可见
+# 注意：debug 会完整打印工具入参与返回正文（Firecrawl 单次可达数万字），生产环境建议调回 info
+logging:
+  level:
+    org.springframework.ai.model.tool: debug
+    org.springframework.ai.tool: debug
 # springdoc-openapi
 springdoc:
   swagger-ui:

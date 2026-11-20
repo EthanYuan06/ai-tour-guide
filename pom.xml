@@ -98,6 +98,18 @@
             <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
             <version>${spring-ai-alibaba.version}</version>
         </dependency>
+        <!-- 快速响应链路默认工具：Tavily 联网搜索（starter 装配为 Function 服务 Bean，由 tools/config/DefaultToolsConfig 包装为 ToolCallback） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-tool-calling-tavilysearch</artifactId>
+            <version>${spring-ai-alibaba.version}</version>
+        </dependency>
+        <!-- 快速响应链路默认工具：Firecrawl 网页抓取（同上，需显式包装为 ToolCallback） -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-tool-calling-firecrawl</artifactId>
+            <version>${spring-ai-alibaba.version}</version>
+        </dependency>
         <!-- Hutool Java 工具类库 -->
         <dependency>
             <groupId>cn.hutool</groupId>
