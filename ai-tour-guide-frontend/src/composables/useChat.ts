@@ -164,6 +164,12 @@ export function useChat() {
       done = true
       closeStream()
     })
+    es.addEventListener('business-error', (e) => {
+      // 错误帧与 done 成对下发，收尾仍交给 done 监听器 closeStream，这里只负责把原因显示出来
+      const payload = JSON.parse((e as MessageEvent<string>).data) as { code: number; message?: string }
+      const notice = `> ${payload.message ?? '服务异常'}，请稍后重试。`
+      reply.content = reply.content ? `${reply.content}\n\n${notice}` : notice
+    })
     es.onerror = () => {
       // EventSource 默认自动重连，必须主动 close 收敛为重试一次都不做
       if (!done) {

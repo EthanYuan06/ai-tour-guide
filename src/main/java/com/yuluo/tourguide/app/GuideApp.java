@@ -4,6 +4,7 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.yuluo.tourguide.constant.ConversationConstant;
+import com.yuluo.tourguide.constant.SseConstant;
 import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
@@ -90,12 +91,28 @@ public class GuideApp {
                 // 百炼兼容模式首包可能是空串，过滤后避免下发空 data 事件
                 .filter(StrUtil::isNotEmpty)
                 // JSON 字符串封装：SSE 规范会剥掉 data 值的一个前导空格，裸文本分片会丢空格破坏 markdown
-                .map(chunk -> ServerSentEvent.<String>builder(JSONUtil.quote(chunk)).event("message").build());
+                .map(chunk -> ServerSentEvent.<String>builder(JSONUtil.quote(chunk)).event(SseConstant.MESSAGE_EVENT).build());
 
-        return Flux.just(
-                        ServerSentEvent.<String>builder(resolvedConversationId).event("conversation").build())
-                .concatWith(contentFlux)
-                .concatWith(Flux.just(ServerSentEvent.<String>builder("[DONE]").event("done").build()));
+        // 流中异常在此收口：此时响应已 committed，交给 GlobalExceptionHandler 再写帧是无效写入，
+        // 而 onErrorResume 之后末尾的 done 帧仍会照常下发，前端不会看到无声断流
+        Flux<ServerSentEvent<String>> resilientContentFlux = contentFlux.onErrorResume(e -> {
+            log.error("[chat] 流式链路异常 conversationId={}", resolvedConversationId, e);
+            return Flux.just(businessErrorEvent(ErrorCode.SYSTEM_ERROR.getCode(), "回答生成失败，请稍后重试"));
+        });
+
+        return Flux.just(ServerSentEvent.<String>builder(resolvedConversationId)
+                        .event(SseConstant.CONVERSATION_EVENT).build())
+                .concatWith(resilientContentFlux)
+                .concatWith(Flux.just(ServerSentEvent.<String>builder("[DONE]").event(SseConstant.DONE_EVENT).build()));
+    }
+
+    /**
+     * 业务错误事件：与 GlobalExceptionHandler 的 SSE 错误帧同格式（{error,code,message}），
+     * 前端按 SseConstant.BUSINESS_ERROR_EVENT 订阅，改名必须两侧同步
+     */
+    private ServerSentEvent<String> businessErrorEvent(int code, String message) {
+        String data = JSONUtil.toJsonStr(Map.of("error", true, "code", code, "message", message));
+        return ServerSentEvent.<String>builder(data).event(SseConstant.BUSINESS_ERROR_EVENT).build();
     }
 
     /**

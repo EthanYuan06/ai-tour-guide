@@ -1,6 +1,7 @@
 package com.yuluo.tourguide.tools;
 
 import cn.hutool.core.util.StrUtil;
+import com.yuluo.tourguide.constant.ToolConstant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -10,7 +11,7 @@ import org.springframework.ai.tool.metadata.ToolMetadata;
 
 /**
  * ToolCallback 观测装饰器：为所有工具补上框架日志缺失的耗时、conversationId 关联与生产可用的 info 级指标
- * 只观测不改写——返回值与异常语义完全透传，兜底文案由各工具自己负责
+ * 观测 + 异常降级：工具异常在此收口为降级文案，是三个工具唯一的公共兜底点
  */
 @Slf4j
 public class LoggingToolCallback implements ToolCallback {
@@ -69,10 +70,14 @@ public class LoggingToolCallback implements ToolCallback {
             log.debug("[tool] name={} result={}", name, result);
             return result;
         } catch (Exception e) {
-            // 原样抛出：装饰器不越层兜底，异常如何回给模型仍由 ToolExecutionExceptionProcessor 决定
-            log.warn("[tool] name={} conversationId={} args={} cost={}ms 执行异常", name, conversationId,
-                    StrUtil.maxLength(toolInput, ARGS_LOG_LIMIT), System.currentTimeMillis() - start, e);
-            throw e;
+            // 降级而非上抛：DefaultToolCallingManager 的异常表只 catch ToolExecutionException，
+            // 三方工具在结果转换阶段抛的裸 IllegalStateException（Tavily 失败响应 results 为 null 触发 Jackson NPE）
+            // 会绕过框架兜底、直接终结整条流式链路。
+            // 堆栈必须留在 warn 里：降级会把真 bug 变静默，只有日志能区分「网络抖动」与「代码写错」
+            log.warn("[tool] name={} conversationId={} args={} cost={}ms 执行异常，已降级为提示文案", name,
+                    conversationId, StrUtil.maxLength(toolInput, ARGS_LOG_LIMIT),
+                    System.currentTimeMillis() - start, e);
+            return ToolConstant.FAILURE_HINT;
         }
     }
 }

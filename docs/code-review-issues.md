@@ -3,7 +3,7 @@
 > 活文档：每次代码审查后增量更新。仅保留当前待修复项；已修复项与「对当前代码没必要 / 负面优化」项即时清除。
 > 分级：高（影响程序，优先修复）/ 中（记录，择机修复）/ 低（记录，可选）。
 
-最后更新：2026-11-21（Agentic RAG 改造收尾：新增「工具选择行为无自动回归」「常量类与工具类构造写法不统一」两条待修复项）
+最后更新：2026-11-21（晴空塔问答事故定位：工具异常降级与 SSE 错误帧链路已修复，新增上游 Tavily 库缺陷待复查项；上一轮为 Agentic RAG 改造收尾新增「工具选择行为无自动回归」「常量类与工具类构造写法不统一」）
 
 ## 高优先级
 
@@ -14,6 +14,7 @@
 
 - [ ] `message` 无最大长度校验：历史整改计划中约定的入参长度上限配置项未落地
 - [ ] 工具选择行为无自动回归：`TavilySearchToolTest` / `FireCrawlToolTest` / `TripKnowledgeSearchToolTest` 全部绕过模型（直接调 service、`ToolCallback.call(json)` 或 mock `VectorStore`），只覆盖包装链路与降级分支。「知识题必调 / 闲聊不调 / 追问数字重调 / 实时题走 tavily」这组边界目前只能人工端到端验证，模型侧行为变化不会被 CI 捕获。修复：补一个 `@EnabledIfSystemProperty` 门控的端到端测试，断言 `[tool]` 调用序列而非回复文本
+- [ ] 上游库缺陷：`spring-ai-alibaba-starter-tool-calling-tavilysearch:1.1.2.0` 的 `TavilySearchService` 请求失败时自行 catch 并返回 `results=null` 的 `Response`，框架记为执行成功；真正的炸点在 Jackson 序列化该 record 的计算属性 `getSearchResult()`（内部 `results.stream()` 无判空）→ `IllegalStateException: Conversion from Object to JSON failed`。因 `DefaultToolCallingManager` 异常表只 catch `ToolExecutionException`，裸异常绕过框架兜底直接掐断流式链路，现由 `LoggingToolCallback` 降级收口。升级 spring-ai-alibaba 后需复查：若上游已修，可把装饰器文案细化为「区分调用失败与结果为空」；Firecrawl 工具同结构，风险未单独实测
 - [ ] `ConversationTokenAccumulator.accumulate` 返回缓存内活对象而非快照：`synchronized` 块外被 `MyLoggerAdvisor.after()` 读取，`long` 字段非 `volatile` 且无 happens-before 边，同会话并发轮次下日志可能读到混合 / 过期快照（存储计数本身正确，影响限于日志准确性）。修复：同步块内返回不可变副本，使「快照」契约成立
 - [ ] `MyLoggerAdvisor.adviseStream` 的 `onErrorResume` 将异常统一包装为 `IllegalStateException`：`before()` 抛出的 `BusinessException(PARAMS_ERROR)` 在 `GlobalExceptionHandler` 落入 `RuntimeException` 分支返回 500「系统错误」而非 400 参数错误，与 `ErrorCode` 语义化规范冲突。注：该包装与 `BaseAdvisor` 默认实现逐字一致，非本次引入的回归，但本次已显式接管该代码路径。修复：移除 `onErrorResume`，对齐官方 `SimpleLoggerAdvisor` 写法
 - [ ] 流式拦截契约不完整 — `busy` 类只挂在 `<nav class="history">`，`handleNewChat` 无 `streaming` 判断，流式中点「开启新对话」会切走视图而 SSE 仍在回写旧会话；与 `removeConversation` 的代码级拦截不同通道 — `handleNewChat` 补 `if (streaming.value) return`，或将阻断上移到整个侧栏并统一为单一通道

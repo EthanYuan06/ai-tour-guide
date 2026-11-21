@@ -3,6 +3,7 @@ package com.yuluo.tourguide.exception;
 import cn.hutool.json.JSONUtil;
 import com.yuluo.tourguide.common.BaseResponse;
 import com.yuluo.tourguide.common.ResultUtils;
+import com.yuluo.tourguide.constant.SseConstant;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,6 +14,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @Hidden
@@ -52,10 +55,18 @@ public class GlobalExceptionHandler {
         }
         HttpServletRequest request = attributes.getRequest();
         HttpServletResponse response = attributes.getResponse();
+        if (response == null) {
+            return false;
+        }
         String accept = request.getHeader("Accept");
         String uri = request.getRequestURI();
-        if ((accept != null && accept.contains("text/event-stream")) ||
-                uri.contains("/chat/gen/code")) {
+        if ((accept != null && accept.contains("text/event-stream"))
+                || (uri != null && uri.contains("/chat/gen/code"))) {
+            if (response.isCommitted()) {
+                // SSE 帧头已发出，此处再写只会与容器输出流互斥抛 IllegalStateException；流中错误的帧由 GuideApp 负责
+                log.warn("SSE 响应已提交，错误帧无法送达，仅记录日志：code={} message={}", errorCode, errorMessage);
+                return true;
+            }
             try {
                 response.setContentType("text/event-stream");
                 response.setCharacterEncoding("UTF-8");
@@ -67,12 +78,14 @@ public class GlobalExceptionHandler {
                         "message", errorMessage
                 );
                 String errorJson = JSONUtil.toJsonStr(errorData);
-                // 发送业务错误事件（避免与标准error事件冲突）
-                String sseData = "event: business-error\ndata: " + errorJson + "\n\n";
-                response.getWriter().write(sseData);
-                response.getWriter().flush();
-                response.getWriter().write("event: done\ndata: {}\n\n");
-                response.getWriter().flush();
+                // 必须用 getOutputStream：SSE 的字节由框架写出器经 OutputStream 通道写出，
+                // 此时 getWriter() 会抛 IllegalStateException（getOutputStream() has already been called），错误帧反而全丢
+                OutputStream out = response.getOutputStream();
+                out.write(("event: " + SseConstant.BUSINESS_ERROR_EVENT + "\ndata: " + errorJson + "\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.write(("event: " + SseConstant.DONE_EVENT + "\ndata: {}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
                 return true;
             } catch (IOException ioException) {
                 log.error("Failed to write SSE error response", ioException);
