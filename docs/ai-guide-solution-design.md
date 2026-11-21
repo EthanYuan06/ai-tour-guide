@@ -188,7 +188,7 @@ graph TD
 | 2 | 会话记忆持久化（已完成） | 用 Spring AI 内置 JdbcChatMemoryRepository 替换内存实现，会话记忆写入 PostgreSQL `spring_ai_chat_memory`（原 Redis 方案暂缓） | JDBC 记忆配置 | 会话记忆可写入并读取，重启服务后历史可恢复 | 登录模块 |
 | 3 | 知识库建设（已完成） | 旅游文档收集、清洗、切分与向量化，直接落 pgvector（`vector_store`，1024 维 COSINE + HNSW） | 知识文档与索引 | 文档可被检索，切分无明显断句问题 | 登录模块 |
 | 4 | 向量检索（已完成） | `PgVectorStore` 自动装配单库数据源，相似度检索召回切片 | VectorStore 配置 | 相似问题能召回相关片段并注入上下文 | 知识库 |
-| 5 | RAG 全链路（部分完成） | 黑盒验证已由 `QuestionAnswerAdvisor` 完成（阈值 0.3 / topK 5，混合式模板）；按需触发与查询增强待后续版本编排 + `@Tool` 化 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发，来源可标注 | 向量检索 |
+| 5 | RAG 全链路（已完成） | 黑盒验证由 `QuestionAnswerAdvisor` 完成（阈值 0.3 / topK 5，混合式模板）；2026-11-21 已把检索管线封装为 `@Tool` `tripKnowledgeSearch`，参数与保真规则原样继承，由模型按需自主决定是否检索与检索什么 | 增强后的对话链路 | 知识类问题触发检索并体现知识库内容，闲聊类不触发（实测：固定三问召回、闲聊两问 0 调用、同会话追问具体数字重新触发）。原「来源可标注」验收项与人设口径冲突，已改为不在回复中暴露检索过程，溯源信息由 `[rag]` / `[tool]` 日志承担 | 向量检索 |
 
 ### 阶段三：工具调用与 ReAct Agent 初步构建
 
@@ -201,7 +201,7 @@ graph TD
 | ① 编写工具并注册 | Tavily 搜索工具 | `@Tool` 封装网页搜索，用于景点介绍、活动时间等实时信息 | Tavily 工具 | 可独立调通，返回候选 URL 与摘要 | 阶段二 |
 | ① | Firecrawl 抓取工具 | `@Tool` 封装页面抓取，Tavily 摘要不足时获取全文 Markdown | Firecrawl 工具 | 指定 URL 可拿到全文 | Tavily 工具 |
 | ① | 结束工具 | 结束 function calling 的工具，异常兜底用，供模型主动终止工具调用循环 | 结束工具 | 模型可调用并正常终止本轮工具调用 | — |
-| ② 快速链路使用工具 | ChatClient 注入工具 | 将 Tavily、Firecrawl、结束工具注入快速响应链路 ChatClient（deepseek-chat），由模型按需自主调用 | 带工具的快速响应链路 | **目标 1**：快速链路中大模型能根据需求调用工具完成任务（如问景点活动时间可联网作答） | 子阶段① |
+| ② 快速链路使用工具 | ChatClient 注入工具 | 将 Tavily、Firecrawl、检索工具 `tripKnowledgeSearch` 注入快速响应链路 ChatClient（deepseek-chat），由模型按需自主调用；三类工具在 `tools/config/DefaultToolsConfig` 集中装配，注入点统一包一层观测装饰器（子阶段①的「结束工具」尚未落地，落地后同样在此注册） | 带工具的快速响应链路 | **目标 1**：快速链路中大模型能根据需求调用工具完成任务（如问景点活动时间可联网作答） | 子阶段① |
 | ③ 创建路由节点 | 前端规划模式按钮 | 对话界面增加「规划模式」按钮，请求携带 planning mode 参数 | 前端按钮与传参 | 按钮状态正确随请求传递 | — |
 | ③ | 参数路由节点 | 后端按 planning mode 参数值分流：关闭→ChatClient 快速链路，开启→ReAct Agent 分支；不做模型判定 | 路由模块 | **目标 2**：参数值正确决定走 ChatClient 还是 ReAct Agent（Agent 分支于子阶段④接通，本阶段先验证分流正确） | 前端按钮 |
 | ④ 构建 ReAct Agent | ReactAgent 构建 | 基于 Agent Framework 与 deepseek-chat 构建 ReactAgent，接入路由 Agent 分支 | Agent 服务 | **目标 3**：能通过自主循环思考与规划，执行工具完成任务 | 路由节点 |

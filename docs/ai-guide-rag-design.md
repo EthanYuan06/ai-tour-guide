@@ -6,7 +6,7 @@
 
 以下为对原始手写计划的修正，开发时以本文档为准：
 
-1. **Agentic RAG 落地方式（核心纠正）**：`RetrievalAugmentationAdvisor` 的检索是**无条件前置**（每轮生成前必检索），属两步 / Naive RAG，直接挂它无法实现「大模型自行决定是否检索」的 Agentic RAG。最终形态改为：用其四模块**自编排检索管线**，再把整条管线**封装为 `@Tool`** 由模型按需调用。`RetrievalAugmentationAdvisor` 用于阶段三复现 Naive RAG 基线，`QuestionAnswerAdvisor` 仅用于阶段二黑盒可行性验证。
+1. **Agentic RAG 落地方式（核心纠正）**：`RetrievalAugmentationAdvisor` 的检索是**无条件前置**（每轮生成前必检索），属两步 / Naive RAG，直接挂它无法实现「大模型自行决定是否检索」的 Agentic RAG。原计划用其四模块**自编排检索管线**，再把整条管线**封装为 `@Tool`** 由模型按需调用；2026-11-21 实际落地时四模块塌成两个——查询重写由模型生成 tool 入参时天然完成，上下文拼装由框架回填工具结果消息代劳，故 `@Tool` 内直连 `vectorStore.similaritySearch`，未引入 `spring-ai-rag`。`RetrievalAugmentationAdvisor` 留给阶段三复现 Naive RAG 基线（未做），`QuestionAnswerAdvisor` 仅用于阶段二黑盒可行性验证（已随之移除依赖）。
 2. **组件名拼写**：`RetrivalAugmentationAdvisor` → `RetrievalAugmentationAdvisor`；`Pre-Retrival/Retrival/Post-Retrival` → `Pre-Retrieval/Retrieval/Post-Retrieval`。
 3. **百炼知识库定位**：阶段一在阿里云百炼知识库做的 ETL 仅作**离线调参参考**（切分规则、相似度阈值、top-k），生产索引与 ETL 最终落在**本地 Spring AI 代码 + pgvector**，二者不混用。
 4. **MMR / rerank 诚实标注**：Spring AI 无开箱 MMR 实现，rerank 也无内置模型对接，二者均以**自定义 `DocumentPostProcessor`** 落地（rerank 对接 DashScope rerank 模型），属自研而非框架默认能力。
@@ -110,6 +110,7 @@ graph TD
 - **阈值依据**：离线冒烟实测召回 score 区间 0.45–0.65，DashScope 嵌入余弦分布整体偏低，官方示例的 0.8 会召回为空，故取 0.3。
 - **order 陷阱（踩坑记录）**：`DefaultChatClient.buildAdvisorChain()` 追加的 `ChatModelCallAdvisor` / `ChatModelStreamAdvisor` order 为 `Integer.MAX_VALUE`，链按 `OrderComparator` **升序 + 稳定**排序。把 QAA 显式设为 `Integer.MAX_VALUE` 会与链尾模型 Advisor 同序并被排到其后，而终端 Advisor 直接调模型不再推进链 —— QAA 的 `before()` 永不执行（表现为无 embedding、无 pgvector 查询、模型称未收到参考资料）。保持默认 order=0 即正常。
 - **验收实测**：固定三问均召回库内一手数据（签证 715/830 元、贵船往返 1750 円、成田夜车 26000 円）；「推荐几个欧洲城市」对照组不谎称引用；探针问题可让模型逐条列出召回切片原文。
+- **终止状态（2026-11-21 补记）**：验收后该 advisor 在 `ChatClientConfig` 中被注释掉，线上并未持续走 RAG，直至阶段三以 `@Tool` 形态重建。本节的参数（0.3 / 5）与保真规则被 `RagConstant` 和提示词原样继承。
 
 ### 阶段三：RAG 链路编排与 Agentic 化
 
@@ -117,12 +118,12 @@ graph TD
 |---|---|---|---|---|---|
 | ⬜ | 复现 Naive RAG | 用 `RetrievalAugmentationAdvisor` 四模块复现基线链路 | 可编排 RAG 管线 | 端到端效果不低于阶段二 | 阶段二 |
 | ⬜ | 检索增强 | 加 `RewriteQueryTransformer` / `MultiQueryExpander`；自研 `DocumentPostProcessor` 实现 rerank、MMR | 增强管线 | 多轮 / 模糊问题召回质量提升，来源可标注 | 基线管线 |
-| ⬜ | Agentic 化 | 将整条检索管线封装为 `@Tool`，由模型按需调用 | Agentic RAG | 知识类问题触发检索，闲聊类不触发 | 增强管线 |
+| ✅ | Agentic 化 | 检索封装为 `@Tool` `tripKnowledgeSearch`，由模型按需调用（2026-11-21 落地）。未按「增强管线」依赖实现：查询重写由模型生成 tool 入参时天然完成，上下文拼装由框架回填工具结果消息代劳，故直接用 `vectorStore.similaritySearch`，零新增依赖 | Agentic RAG | 知识类问题触发检索，闲聊类不触发（实测：Q1 触发、闲聊两问 0 调用、实时票价走 `tavilySearch`、同会话追问「住宿多少钱一晚」重新触发） | 阶段二 |
 | ⬜ | 阶段验收 | 多轮对话端到端演练 | 验收记录 | 模型自主决定是否检索并正确展示私有知识 | 以上全部 |
 
 ## 五、最终效果
 
-用户在多轮提问中，大模型根据需求自主决定是否触发 RAG 检索，将本项目私有旅游知识展示给用户；闲聊与非知识类问题不触发检索，来源可标注。
+用户在多轮提问中，大模型根据需求自主决定是否触发 RAG 检索，将本项目私有旅游知识展示给用户；闲聊与非知识类问题不触发检索。检索过程与来源不在回复中暴露（人设硬约束），改由 `[rag]` / `[tool]` 日志承担溯源，与早期「来源可标注」的表述以本条为准。
 
 ## 六、配置与依赖落地要点
 
@@ -131,20 +132,20 @@ graph TD
 - ✅ `spring-ai-starter-vector-store-pgvector`：`PgVectorStore` 自动装配（1.1.2 已落地，依赖树含 `spring-ai-pgvector-store` 与 `com.pgvector:pgvector:0.1.6`）。
 - ✅ `spring-ai-markdown-document-reader`：`MarkdownDocumentReader`（ETL Extract，1.1.2）。
 - ✅ `spring-ai-alibaba-starter-dashscope`：`DashScopeEmbeddingModel` 自动装配（1.1.2.0，对应 Spring AI 1.1.2）。
-- ⬜ `spring-ai-rag`：`RetrievalAugmentationAdvisor` 及四模块。
-- ✅ `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`（1.1.2 已落地；2.0 起该模块更名 `spring-ai-vector-store-advisor`）。
+- ➖ `spring-ai-rag`：`RetrievalAugmentationAdvisor` 及四模块。**未引入**：Agentic 化后检索直接用 `vectorStore.similaritySearch`，查询重写由模型生成 `@Tool` 入参时代劳、上下文拼装由框架回填工具结果消息代劳，四模块只剩两个，为此引入整个 artifact 不划算。`VectorStoreDocumentRetriever` / `DocumentPostProcessor`（rerank、MMR）留到真需要检索增强时再加。
+- ✅ `spring-ai-advisors-vector-store`：`QuestionAnswerAdvisor`（1.1.2 曾落地；2.0 起该模块更名 `spring-ai-vector-store-advisor`）。**2026-11-21 已随 Advisor 形态一并从 pom 移除**，全仓无残留引用。
 
 **application.yml / .env：**
 
 - ✅ 数据源单库 PostgreSQL：`spring.datasource` 的 url / username / password 写作 `${PG_URL}` / `${PG_USERNAME}` / `${PG_PASSWORD}`，真实值放 `.env`（已 gitignore，不入库）；对话记忆表与向量表同库同源，不再有「pgvector 独立于主库」的双数据源问题。
 - ✅ `spring.ai.vectorstore.pgvector.initialize-schema: true` 幂等建表（建表脚本依赖的 `vector` / `hstore` / `uuid-ossp` 已在实例装好），`index-type: HNSW`、`distance-type: COSINE_DISTANCE`、`dimensions: 1024`。
 - ✅ Embedding 走 **Spring AI Alibaba starter 原生通道**（2026-11-16 调整，替代原 OpenAI 兼容模式方案）：顶层开关 `spring.ai.model.embedding: dashscope`（同时关闭 OpenAI embedding 自动装配，容器内仅一个 EmbeddingModel），独立配置区 `spring.ai.dashscope.api-key` + `spring.ai.dashscope.embedding.options.{model, dimensions, text-type}`。**模型 `qwen3.7-text-embedding-flash`、维度 1024 已实测连通**（官方文档 Supported Models 未列该模型，model 为透传字符串，单条嵌入验证返回 1024 维）；`text-type: document` 用于入库，在线查询阶段按 `query` 覆盖。`dimensions` 与 `vectorstore.pgvector.dimensions` 必须一致，否则入库报 `22000 vector type mismatch`。chat 仍走 OpenAI 兼容模式不受影响，对话链路回归通过。
-- ⏳ 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。验证阶段以 `ChatAiConfig` 常量单源（0.3 / 5，无魔法值散落），尚未迁到 `application.yml`；正式调参定稿后再配置化。
+- ⏳ 检索参数（`similarityThreshold` / `topK`）单源配置，沿用阶段一调参结果。现以 `constant/RagConstant` 常量单源（0.3 / 5，含两条降级文案，无魔法值散落），读取方为 `tools/TripKnowledgeSearchTool`；尚未迁到 `application.yml`，正式调参定稿后再配置化。
 
 **代码落点：**
 
 - ✅ ETL 落点：`utils/RegexTextSplitter` + `utils/DocumentEtlUtils`（通用工具类，不绑定触发方式）；手动触发入口 `src/test/java/.../rag/RagEtlPipelineTest`（嵌入连通性 → 幂等入库 → 冒烟召回）。
-- ⏳ `ChatAiConfig` 挂 advisor / 注册检索 `@Tool`：`QuestionAnswerAdvisor` 已挂入 `tourGuideChatClient`（阶段二验证形态）；检索管线封装为独立 service + `@Tool` 注册待阶段三。
+- ✅ 检索装配落点（2026-11-21 Agentic 化完成）：`tools/TripKnowledgeSearchTool`（`@Tool` 方法体自带 try-catch 与 `[rag]` 命中日志）→ `tools/config/DefaultToolsConfig` 声明为 `ToolCallback` bean（与 Tavily / Firecrawl 同形集中装配）→ `config/ChatClientConfig` 在 `List<ToolCallback>` 注入点统一包一层 `tools/LoggingToolCallback` 后 `defaultToolCallbacks` 注册。原 `config/AdvisorConfig`（`QuestionAnswerAdvisor` + `HYBRID_RAG_PROMPT`）已整类删除，保真语义移入 `prompts/tour-guide-system.st` 的「一手记录保真」节。
 - ✅ 切 PG 已改的方言点：`ConversationService` 会话列表的 epoch 取值改为 `CAST(FLOOR(EXTRACT(EPOCH FROM MIN("timestamp" AT TIME ZONE 'Asia/Shanghai'))) AS BIGINT)`；`ChatMemoryEntity` 的 `@Table` 改小写 `spring_ai_chat_memory`。
 
 > 本文档描述方案，pom 与 yml 的实际改动在对应开发阶段执行；上面带 ✅ 的条目表示已落地并实测通过。

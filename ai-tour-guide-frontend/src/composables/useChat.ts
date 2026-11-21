@@ -20,7 +20,7 @@ export interface Conversation {
   loaded: boolean
 }
 
-/** 标题截取长度，与后端 ConversationConstants.TITLE_MAX_LENGTH 对齐 */
+/** 标题截取长度，与后端 ConversationConstant.TITLE_MAX_LENGTH 对齐 */
 const TITLE_MAX_LENGTH = 30
 
 // 会话列表由后端记忆表恢复，刷新后不再丢失；消息按需懒加载

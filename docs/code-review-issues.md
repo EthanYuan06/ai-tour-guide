@@ -3,7 +3,7 @@
 > 活文档：每次代码审查后增量更新。仅保留当前待修复项；已修复项与「对当前代码没必要 / 负面优化」项即时清除。
 > 分级：高（影响程序，优先修复）/ 中（记录，择机修复）/ 低（记录，可选）。
 
-最后更新：2026-11-11（会话模块精简：MyBatis-Flex 接管查询/删除、删标题空白折叠与日期分组、DeleteRequest 改 String、修复 JsonConfig；清除已解决项 1 高 / 4 中 / 1 低）
+最后更新：2026-11-21（Agentic RAG 改造收尾：新增「工具选择行为无自动回归」「常量类与工具类构造写法不统一」两条待修复项）
 
 ## 高优先级
 
@@ -13,6 +13,7 @@
 ## 中优先级
 
 - [ ] `message` 无最大长度校验：历史整改计划中约定的入参长度上限配置项未落地
+- [ ] 工具选择行为无自动回归：`TavilySearchToolTest` / `FireCrawlToolTest` / `TripKnowledgeSearchToolTest` 全部绕过模型（直接调 service、`ToolCallback.call(json)` 或 mock `VectorStore`），只覆盖包装链路与降级分支。「知识题必调 / 闲聊不调 / 追问数字重调 / 实时题走 tavily」这组边界目前只能人工端到端验证，模型侧行为变化不会被 CI 捕获。修复：补一个 `@EnabledIfSystemProperty` 门控的端到端测试，断言 `[tool]` 调用序列而非回复文本
 - [ ] `ConversationTokenAccumulator.accumulate` 返回缓存内活对象而非快照：`synchronized` 块外被 `MyLoggerAdvisor.after()` 读取，`long` 字段非 `volatile` 且无 happens-before 边，同会话并发轮次下日志可能读到混合 / 过期快照（存储计数本身正确，影响限于日志准确性）。修复：同步块内返回不可变副本，使「快照」契约成立
 - [ ] `MyLoggerAdvisor.adviseStream` 的 `onErrorResume` 将异常统一包装为 `IllegalStateException`：`before()` 抛出的 `BusinessException(PARAMS_ERROR)` 在 `GlobalExceptionHandler` 落入 `RuntimeException` 分支返回 500「系统错误」而非 400 参数错误，与 `ErrorCode` 语义化规范冲突。注：该包装与 `BaseAdvisor` 默认实现逐字一致，非本次引入的回归，但本次已显式接管该代码路径。修复：移除 `onErrorResume`，对齐官方 `SimpleLoggerAdvisor` 写法
 - [ ] 流式拦截契约不完整 — `busy` 类只挂在 `<nav class="history">`，`handleNewChat` 无 `streaming` 判断，流式中点「开启新对话」会切走视图而 SSE 仍在回写旧会话；与 `removeConversation` 的代码级拦截不同通道 — `handleNewChat` 补 `if (streaming.value) return`，或将阻断上移到整个侧栏并统一为单一通道
@@ -28,6 +29,7 @@
 - [ ] `MyLoggerAdvisor.after` 用 `String.valueOf(conversationId)` 作累计器 key：null 会退化为字符串 `"null"`，把所有匿名请求静默合并进同一计数桶。当前被 `before()` 的非空校验挡住，属防御性缺口
 - [ ] `adviseStream` 覆写保留了 `Mono.just` / `publishOn` / `onErrorResume` 等冗余编排：1.1.2 官方 `SimpleLoggerAdvisor` 仅需「记录请求 → `chain.nextStream` → `aggregateChatClientResponse`」三步，收敛后可同时解掉上面的异常包装问题
 - [ ] `MyLoggerAdvisor` 在 `info` 级别打印 AI 回复全文：流式聚合修复后该链路首次真正落全文，配合 `max-tokens: 6000` 单条日志可达数千 token，存在日志膨胀与对话内容进日志的敏感面。修复：全文降为 `debug`，`info` 只留截断摘要 + token 统计
+- [ ] 常量类与工具类的构造写法不统一：`constant/RagConstant` 与 `constant/ConversationConstant` 已改用 Lombok `@UtilityClass`（自动生成 final 类与抛异常的私有构造），但 `utils/DocumentEtlUtils`、`utils/RegexTextSplitter` 仍是手写 `public final class` + 私有构造。修复：utils 两个类一并切到 `@UtilityClass`，全仓单一写法
 - [ ] 本轮新增/修改的多个文件缺 EOF 换行（Java DTO、Controller、Service、useChat.ts、api.ts 等） — 违反阿里手册格式约定，diff 噪声大 — 编辑器/提交前统一补尾行
 - [ ] 会话 id 长度校验双源 — `GuideApp` 与 `ConversationService` 各写一遍同一 36 阈值 — 抽公共校验方法或 Controller/App 统一调 Service 的 public 校验
 - [ ] `ConversationController.delete` 的 `data` 恒为 `true` — Service 返回 void，Controller 硬编码 `success(true)`，Javadoc「是否删除成功」语义空转 — Service 返回 boolean/受影响行数，Controller 透传

@@ -3,7 +3,7 @@ package com.yuluo.tourguide.app;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
-import com.yuluo.tourguide.common.ConversationConstants;
+import com.yuluo.tourguide.constant.ConversationConstant;
 import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.model.dto.ChatRequest;
@@ -56,6 +56,8 @@ public class GuideApp {
                 .system(systemPrompt)
                 .user(message.trim())
                 .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, conversationId))
+                // toolContext 与 advisor param 是两条独立通道，只设后者工具侧取不到会话 id
+                .toolContext(Map.of(ChatMemory.CONVERSATION_ID, conversationId))
                 .call()
                 .content();
 
@@ -82,6 +84,7 @@ public class GuideApp {
                 .system(systemPrompt)
                 .user(message.trim())
                 .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, resolvedConversationId))
+                .toolContext(Map.of(ChatMemory.CONVERSATION_ID, resolvedConversationId))
                 .stream()
                 .content()
                 // 百炼兼容模式首包可能是空串，过滤后避免下发空 data 事件
@@ -106,8 +109,8 @@ public class GuideApp {
             return newId;
         }
         String trimmed = conversationId.trim();
-        ThrowUtils.throwIf(trimmed.length() > ConversationConstants.ID_MAX_LENGTH,
-                ErrorCode.PARAMS_ERROR, "会话 id 长度不能超过 " + ConversationConstants.ID_MAX_LENGTH);
+        ThrowUtils.throwIf(trimmed.length() > ConversationConstant.ID_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR, "会话 id 长度不能超过 " + ConversationConstant.ID_MAX_LENGTH);
         return trimmed;
     }
 }

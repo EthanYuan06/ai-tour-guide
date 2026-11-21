@@ -2,7 +2,7 @@ package com.yuluo.tourguide.service;
 
 import cn.hutool.core.util.StrUtil;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.yuluo.tourguide.common.ConversationConstants;
+import com.yuluo.tourguide.constant.ConversationConstant;
 import com.yuluo.tourguide.exception.ErrorCode;
 import com.yuluo.tourguide.exception.ThrowUtils;
 import com.yuluo.tourguide.mapper.ChatMemoryMapper;
@@ -39,7 +39,7 @@ public class ConversationService {
      */
     private static final String CREATED_AT_EPOCH_SQL =
             "CAST(FLOOR(EXTRACT(EPOCH FROM MIN(\"timestamp\" AT TIME ZONE '"
-                    + ConversationConstants.TIMESTAMP_ZONE + "'))) AS BIGINT)";
+                    + ConversationConstant.TIMESTAMP_ZONE + "'))) AS BIGINT)";
 
     /**
      * 查询会话列表，按创建时间倒序
@@ -57,7 +57,7 @@ public class ConversationService {
                 .from(CHAT_MEMORY_ENTITY)
                 .groupBy(CHAT_MEMORY_ENTITY.CONVERSATION_ID)
                 .orderBy(min(CHAT_MEMORY_ENTITY.TIMESTAMP).desc())
-                .limit(ConversationConstants.LIST_LIMIT);
+                .limit(ConversationConstant.LIST_LIMIT);
         List<ConversationSummary> summaries =
                 chatMemoryMapper.selectListByQueryAs(summaryQuery, ConversationSummary.class);
         if (summaries.isEmpty()) {
@@ -130,8 +130,8 @@ public class ConversationService {
      */
     private void validateConversationId(String conversationId) {
         ThrowUtils.throwIf(StrUtil.isBlank(conversationId), ErrorCode.PARAMS_ERROR, "会话 id 不能为空");
-        ThrowUtils.throwIf(conversationId.trim().length() > ConversationConstants.ID_MAX_LENGTH,
-                ErrorCode.PARAMS_ERROR, "会话 id 长度不能超过 " + ConversationConstants.ID_MAX_LENGTH);
+        ThrowUtils.throwIf(conversationId.trim().length() > ConversationConstant.ID_MAX_LENGTH,
+                ErrorCode.PARAMS_ERROR, "会话 id 长度不能超过 " + ConversationConstant.ID_MAX_LENGTH);
     }
 
     /**
@@ -139,8 +139,8 @@ public class ConversationService {
      */
     private static String buildTitle(String rawTitle) {
         if (StrUtil.isBlank(rawTitle)) {
-            return ConversationConstants.DEFAULT_TITLE;
+            return ConversationConstant.DEFAULT_TITLE;
         }
-        return rawTitle.substring(0, Math.min(rawTitle.length(), ConversationConstants.TITLE_MAX_LENGTH));
+        return rawTitle.substring(0, Math.min(rawTitle.length(), ConversationConstant.TITLE_MAX_LENGTH));
     }
 }

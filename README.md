@@ -8,7 +8,7 @@
 
 - SSE 流式多轮对话（`GET /api/chat/stream`），带 token 消耗统计
 - 对话记忆持久化到 PostgreSQL（窗口 20 条，重启可恢复）
-- RAG 检索增强：`QuestionAnswerAdvisor` 阈值 0.3 / topK 5，召回一手旅游语料；离线 ETL 由 `RegexTextSplitter` + `DocumentEtlUtils` 完成
+- RAG 检索增强（Agentic 形态）：检索管线封装为 `@Tool` `tripKnowledgeSearch`，由模型按需决定是否检索与检索什么，阈值 0.3 / topK 5；离线 ETL 由 `RegexTextSplitter` + `DocumentEtlUtils` 完成
 - 会话管理：列表 / 历史懒加载 / 删除
 - 前端 Vue3 单页聊天界面，Markdown + 代码高亮渲染，桌面 / 移动端响应式
 
@@ -99,7 +99,7 @@ graph TD
 与 Spring Boot 同栈，ChatClient/Advisor 声明式编排、pgvector 与 chat-memory starter 开箱即用，Prompt 用 `.st` 模板管理，全程不引入 Python 异构。
 
 **为什么 RAG 先做 Naive 形态，而不是直接上 Agent 检索？**
-语料小而精、问题固定（三问 gold set），`QuestionAnswerAdvisor` 一行挂上即可闭环，先用实测调出阈值 0.3 / topK 5 和保真规则，Agentic RAG、rerank 留待链路验证后再演进。
+语料小而精、问题固定（三问 gold set），先用 `QuestionAnswerAdvisor` 一行挂上把链路跑通，用实测调出阈值 0.3 / topK 5 和保真规则；参数定稿后再把检索封装为 `@Tool`，升级为模型按需调用的 Agentic 形态。这样调参与能力演进分两步，黑盒阶段测出的参数在工具化后原样复用。
 
 ## 快速开始
 

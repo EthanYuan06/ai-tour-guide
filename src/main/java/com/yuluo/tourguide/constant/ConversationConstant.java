@@ -1,10 +1,13 @@
-package com.yuluo.tourguide.common;
+package com.yuluo.tourguide.constant;
+
+import lombok.experimental.UtilityClass;
 
 /**
  * 会话记忆相关常量
  * 集中定义避免魔法值，并保证对话入口与查询入口的校验口径一致
  */
-public final class ConversationConstants {
+@UtilityClass
+public class ConversationConstant {
 
     /**
      * 会话 id 最大长度，对齐记忆表列 conversation_id VARCHAR(36)
@@ -32,7 +35,4 @@ public final class ConversationConstants {
      * 故取 epoch 前需用此 zone 通过 AT TIME ZONE 显式声明时区，保持与前端毫秒契约一致
      */
     public static final String TIMESTAMP_ZONE = "Asia/Shanghai";
-
-    private ConversationConstants() {
-    }
 }

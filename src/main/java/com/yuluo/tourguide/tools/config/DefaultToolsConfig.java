@@ -2,6 +2,8 @@ package com.yuluo.tourguide.tools.config;
 
 import com.alibaba.cloud.ai.toolcalling.firecrawl.FireCrawlService;
 import com.alibaba.cloud.ai.toolcalling.tavily.TavilySearchService;
+import com.yuluo.tourguide.tools.TripKnowledgeSearchTool;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.context.annotation.Bean;
@@ -10,9 +12,8 @@ import org.springframework.context.annotation.Configuration;
 import java.util.function.Function;
 
 /**
- * Spring AI Alibaba 已集成工具的接入配置：tool-calling starter 自动装配产出的是
- * Function 服务 Bean 而非 ToolCallback，这里显式包装成 ToolCallback Bean 供 ChatClient 挂载。
- * 本类只服务于官方已集成的工具，项目自定义工具（PDF 生成、浏览器下载等）由 ToolRegistration 集中注册
+ * 对话链路默认工具集中装配：编程式（Tavily / Firecrawl）与声明式（一手记录检索）在此同形注册为 ToolCallback
+ * 只做装配不做包装，观测装饰器统一在 ChatClientConfig 的注入点加，避免新增工具漏包后静默没有日志
  */
 @Configuration
 public class DefaultToolsConfig {
@@ -68,9 +69,18 @@ public class DefaultToolsConfig {
     @Bean
     public ToolCallback fireCrawlToolCallback(FireCrawlService fireCrawlService) {
         return FunctionToolCallback.builder("fireCrawl", fireCrawlService)
-                .description("网页抓取工具：当需要读取某个具体网页 URL 的正文内容（如景点官网、票价详情页、行程页面）以获取更完整信息时调用，输入目标网页 url，返回该页面正文。")
+                .description("网页抓取工具：当需要读取某个具体网页 URL 的正文内容（如景点官网、票价详情页、行程页面）以获取更完整信息时调用，输入目标网页 url，返回该页面正文。当且仅当 Tavily 搜索工具无法满足需求时使用。")
                 .inputType(FireCrawlService.Request.class)
                 .inputSchema(FIRECRAWL_INPUT_SCHEMA)
                 .build();
+    }
+
+    /**
+     * 声明式 @Tool 工具在此转为 ToolCallback，与前两个编程式工具同形注册
+     */
+    @Bean
+    public ToolCallback tripKnowledgeSearchToolCallback(TripKnowledgeSearchTool tripKnowledgeSearchTool) {
+        // 取 [0] 的前提是该类只有一个 @Tool 方法；日后加第二个必须按 name 过滤，否则新工具静默不生效
+        return ToolCallbacks.from(tripKnowledgeSearchTool)[0];
     }
 }
